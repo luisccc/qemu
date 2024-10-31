@@ -118,6 +118,7 @@ DeviceState *riscv_wgchecker_create(hwaddr addr, uint32_t size,
                                     MemoryRegion **downstream,
                                     uint64_t *region_offset,
                                     uint32_t num_default_slots,
-                                    WgCheckerSlot *default_slots);
+                                    WgCheckerSlot *default_slots,
+                                    bool hw_bypass);
 
 #endif

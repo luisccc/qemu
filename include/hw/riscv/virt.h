@@ -163,7 +163,7 @@ uint32_t imsic_num_bits(uint32_t count);
 /* WorldGuard */
 #define VIRT_WG_NWORLDS         4
 #define VIRT_WG_TRUSTEDWID      3
-#define VIRT_WG_HWBYPASS        true
+#define VIRT_WG_HWBYPASS        false
 #define VIRT_WG_TZCOMPAT        false
 
 #endif

@@ -110,6 +110,7 @@ typedef struct WGCInfo {
     int memmap_idx;
     uint32_t irq_num;
     uint32_t slot_count;
+    bool     hw_bypass;
 
     int num_of_child;
     MemoryRegion *c_region[WGC_NUM_REGIONS];
@@ -124,9 +125,9 @@ enum {
 };
 
 static WGCInfo virt_wgcinfo[] = {
-    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16 },
-    [WGC_FLASH] = { VIRT_WGC_FLASH, WGC_FLASH_IRQ, 16 },
-    [WGC_UART]  = { VIRT_WGC_UART, WGC_UART_IRQ, 1 },
+    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16, true},
+    [WGC_FLASH] = { VIRT_WGC_FLASH, WGC_FLASH_IRQ, 16, true},
+    [WGC_UART]  = { VIRT_WGC_UART, WGC_UART_IRQ, 1, true},
 };
 
 static void wgc_append_child(WGCInfo *info, MemoryRegion *region,
@@ -1378,7 +1379,7 @@ static DeviceState *create_wgc(WGCInfo *info, DeviceState *irqchip)
 
     wgc = riscv_wgchecker_create(
         base, size, irq, info->slot_count, 0, 0,
-        info->num_of_child, info->c_region, info->c_offset, 0, NULL);
+        info->num_of_child, info->c_region, info->c_offset, 0, NULL, info->hw_bypass);
 
     /* Map upstream_mr to system_memory */
     for (int i=0; i<info->num_of_child; i++) {

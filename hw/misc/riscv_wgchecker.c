@@ -1116,7 +1116,8 @@ DeviceState *riscv_wgchecker_create(hwaddr addr, uint32_t size,
                                     MemoryRegion **downstream,
                                     uint64_t *region_offset,
                                     uint32_t num_default_slots,
-                                    WgCheckerSlot *default_slots)
+                                    WgCheckerSlot *default_slots,
+                                    bool hw_bypass)
 {
     DeviceState *dev = qdev_new(TYPE_RISCV_WGCHECKER);
     RISCVWgCheckerState *s = RISCV_WGCHECKER(dev);
@@ -1127,6 +1128,8 @@ DeviceState *riscv_wgchecker_create(hwaddr addr, uint32_t size,
     qdev_prop_set_uint32(dev, "slot-count", slot_count);
     qdev_prop_set_uint32(dev, "mmio-size", size);
     qdev_prop_set_uint64(dev, "addr-range-start", addr_range_start);
+    qdev_prop_set_bit(dev, "hw-bypass", hw_bypass);
+
     if (addr_range_size) {
         qdev_prop_set_uint64(dev, "addr-range-size", addr_range_size);
     }
