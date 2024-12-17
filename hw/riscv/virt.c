@@ -111,6 +111,7 @@ typedef struct WGCInfo {
     uint32_t irq_num;
     uint32_t slot_count;
     bool     hw_bypass;
+    uint64_t addr_range_start, addr_range_size;
 
     int num_of_child;
     MemoryRegion *c_region[WGC_NUM_REGIONS];
@@ -125,9 +126,10 @@ enum {
 };
 
 static WGCInfo virt_wgcinfo[] = {
-    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16, true},
-    [WGC_FLASH] = { VIRT_WGC_FLASH, WGC_FLASH_IRQ, 16, true},
-    [WGC_UART]  = { VIRT_WGC_UART, WGC_UART_IRQ, 1, true},
+    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16, true, 0, 0},
+    [WGC_FLASH] = { VIRT_WGC_FLASH, WGC_FLASH_IRQ, 16, true, virt_memmap[VIRT_FLASH].base, virt_memmap[VIRT_FLASH].size},
+    /*Should be: virt_memmap[VIRT_UART0].size, but OpenSBI driver inits the region with a page size*/
+    [WGC_UART]  = { VIRT_WGC_UART, WGC_UART_IRQ, 1, true, virt_memmap[VIRT_UART0].base, 0x1000},
 };
 
 static void wgc_append_child(WGCInfo *info, MemoryRegion *region,
@@ -1354,7 +1356,7 @@ static DeviceState *create_wgc(WGCInfo *info, DeviceState *irqchip)
 {
     MemoryRegion *system_memory = get_system_memory();
     DeviceState *wgc;
-    MemoryRegion *upstream_mr, *downstream_mr;
+    MemoryRegion *upstream_mr, *downstream_mr = NULL;
     qemu_irq irq = qdev_get_gpio_in(irqchip, info->irq_num);
     hwaddr base, size;
 
@@ -1378,7 +1380,7 @@ static DeviceState *create_wgc(WGCInfo *info, DeviceState *irqchip)
     size = virt_memmap[info->memmap_idx].size;
 
     wgc = riscv_wgchecker_create(
-        base, size, irq, info->slot_count, 0, 0,
+        base, size, irq, info->slot_count, info->addr_range_start, info->addr_range_size,
         info->num_of_child, info->c_region, info->c_offset, 0, NULL, info->hw_bypass);
 
     /* Map upstream_mr to system_memory */
