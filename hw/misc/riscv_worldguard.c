@@ -146,7 +146,8 @@ static void riscv_cpu_wg_reset(CPURISCVState *env)
             cpu->cfg.mwidlist = valid_widlist;
         }
         if (cpu->cfg.mwid == UINT32_MAX) {
-            cpu->cfg.mwid = trustedwid;
+            // If it is the first Core make it trustedwid
+            cpu->cfg.mwid = (cs->cpu_index == 0 || worldguard_config->hw_bypass) ? trustedwid : 0;
         }
 
         /* Check if mwid/mwidlist HW config is valid in NWorld. */
