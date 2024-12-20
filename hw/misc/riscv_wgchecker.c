@@ -1032,7 +1032,8 @@ static void riscv_wgchecker_reset_enter(Object *obj, ResetType type)
 {
     RISCVWgCheckerState *s = RISCV_WGCHECKER(obj);
     uint64_t start = s->addr_range_start;
-    uint64_t end = s->addr_range_start + s->addr_range_size;
+    // Prevent overflow
+    uint64_t end = (s->addr_range_start + s->addr_range_size < s->addr_range_start)? UINT64_MAX : s->addr_range_start + s->addr_range_size;
     int nslots = s->slot_count;
 
     s->errcause = 0;

@@ -126,7 +126,7 @@ enum {
 };
 
 static WGCInfo virt_wgcinfo[] = {
-    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16, true, 0, 0},
+    [WGC_DRAM]  = { VIRT_WGC_DRAM, WGC_DRAM_IRQ, 16, true, virt_memmap[VIRT_DRAM].base, 0},
     [WGC_FLASH] = { VIRT_WGC_FLASH, WGC_FLASH_IRQ, 16, true, virt_memmap[VIRT_FLASH].base, virt_memmap[VIRT_FLASH].size},
     /*Should be: virt_memmap[VIRT_UART0].size, but OpenSBI driver inits the region with a page size*/
     [WGC_UART]  = { VIRT_WGC_UART, WGC_UART_IRQ, 1, true, virt_memmap[VIRT_UART0].base, 0x1000},
