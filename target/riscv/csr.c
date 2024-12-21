@@ -4365,6 +4365,9 @@ static RISCVException rmw_mwiddeleg(CPURISCVState *env, int csrno,
     /* Core wgMarker can only have WID value in mwidlist. */
     env->mwiddeleg &= cpu->cfg.mwidlist;
 
+    // According to the spec, slwid must reset to the lowest permissible value in mwiddeleg
+    rmw_slwid(env, csrno, ret_val, env->slwid, wr_mask);
+
     return RISCV_EXCP_NONE;
 }
 #endif
