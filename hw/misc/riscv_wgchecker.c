@@ -558,7 +558,9 @@ static void validate_slot_address(void *opaque, int slot_id)
 {
     RISCVWgCheckerState *s = RISCV_WGCHECKER(opaque);
     uint64_t start = TO_SLOT_ADDR(s->addr_range_start);
-    uint64_t end = TO_SLOT_ADDR(s->addr_range_start + s->addr_range_size);
+    // Prevent overflow
+    uint64_t end = (s->addr_range_start + s->addr_range_size < s->addr_range_start)? 
+                    UINT64_MAX : TO_SLOT_ADDR(s->addr_range_start + s->addr_range_size);
     uint32_t cfg_a = FIELD_EX32(s->slots[slot_id].cfg, SLOT_CFG, A);
 
     /* First and last slot address are hard-coded. */
