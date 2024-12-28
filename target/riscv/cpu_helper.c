@@ -163,15 +163,27 @@ static uint32_t riscv_cpu_wg_get_wid(CPURISCVState *env, int mode)
             /* HS-mode, S-mode w/o RVH, or VS-mode but mwiddeleg = 0 */
             return env->mlwid;
         } else {
-            /* VS-mode */
-            return env->slwid;
+            if(!riscv_cpu_cfg(env)->ext_shwgd) {
+                /* VS-Mode but with no shwgd = 0*/
+                return env->slwid;
+            }
+            /* VS-mode with shwgd*/
+            return env->hslwid;
         }
     } else if (mode == PRV_U) {
         if (!riscv_has_ext(env, RVS) || !env->mwiddeleg) {
             /* M/U mode CPU or mwiddeleg = 0 */
             return env->mlwid;
         } else {
-            return env->slwid;
+            if (!virt || !riscv_cpu_cfg(env)->ext_shwgd) {
+                return env->slwid;
+            }
+            else {
+                if(!env->hwiddeleg)
+                    return env->hslwid;
+                
+                return env->vslwid;
+            }
         }
     }
 

@@ -147,7 +147,7 @@ static void riscv_cpu_wg_reset(CPURISCVState *env)
         }
         if (cpu->cfg.mwid == UINT32_MAX) {
             // If it is the first Core make it trustedwid
-            cpu->cfg.mwid = (cs->cpu_index == 0 || worldguard_config->hw_bypass) ? trustedwid : 0;
+            cpu->cfg.mwid = trustedwid; //(cs->cpu_index == 0 || worldguard_config->hw_bypass) ? trustedwid : 0;
         }
 
         /* Check if mwid/mwidlist HW config is valid in NWorld. */
@@ -174,6 +174,9 @@ void riscv_worldguard_apply_cpu(uint32_t hartid)
     rcpu->cfg.ext_smwg = true;
     if (riscv_has_ext(env, RVS) && riscv_has_ext(env, RVU)) {
         rcpu->cfg.ext_sswg = true;
+    }
+    if (riscv_has_ext(env, RVH)) {
+        rcpu->cfg.ext_shwgd = true;
     }
 
     /* Set machine specific WorldGuard callback */

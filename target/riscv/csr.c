@@ -4291,6 +4291,15 @@ static RISCVException worldguard_sumode(CPURISCVState *env, int csrno)
     return umode(env, csrno);
 }
 
+static RISCVException worldguard_hmode(CPURISCVState *env, int csrno)
+{
+    if (!riscv_cpu_cfg(env)->ext_shwgd) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return hmode(env, csrno);
+}
+
 static RISCVException rmw_mlwid(CPURISCVState *env, int csrno,
                                 target_ulong *ret_val,
                                 target_ulong new_val, target_ulong wr_mask)
@@ -4317,34 +4326,115 @@ static RISCVException rmw_mlwid(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
-static RISCVException rmw_slwid(CPURISCVState *env, int csrno,
+static RISCVException rmw_hslwid(CPURISCVState *env, int csrno,
                                 target_ulong *ret_val,
                                 target_ulong new_val, target_ulong wr_mask)
 {
-    target_ulong new_slwid = (env->slwid & ~wr_mask) | (new_val & wr_mask);
+    CPUState *cs = env_cpu(env);
+    target_ulong new_hslwid = (env->hslwid & ~wr_mask) | (new_val & wr_mask);
 
     if (!env->mwiddeleg) {
         /*
-         * When mwiddeleg CSR is zero, access to slwid raises an illegal
+         * When mwiddeleg CSR is zero, access to hslwid raises an illegal
          * instruction exception.
          */
         return RISCV_EXCP_ILLEGAL_INST;
     }
 
     if (ret_val) {
-        *ret_val = env->slwid;
+        *ret_val = env->hslwid;
     }
 
-    if (!(BIT(new_slwid) & env->mwiddeleg)) {
+    if (!(BIT(new_hslwid) & env->mwiddeleg)) {
         /* Set WID to lowest legal value if writing illegal value (WARL) */
-        new_slwid = find_first_bit(
+        new_hslwid = find_first_bit(
             (unsigned long *)&env->mwiddeleg, TARGET_LONG_BITS);
     }
 
-    if (env->slwid != new_slwid) {
-        env->slwid = new_slwid;
-        tlb_flush(env_cpu(env));
+    if (env->hslwid != new_hslwid) {
+        env->hslwid = new_hslwid;
+        tlb_flush(cs);
     }
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_slwid(CPURISCVState *env, int csrno,
+                                target_ulong *ret_val,
+                                target_ulong new_val, target_ulong wr_mask)
+{
+    target_ulong new_slwid  = (env->slwid & ~wr_mask) | (new_val & wr_mask);
+    target_ulong new_vslwid = (env->vslwid & ~wr_mask) | (new_val & wr_mask);
+    bool virt = env->virt_enabled;
+
+    // If we are in virtual mode and shwgd, we are accessing vslwid
+    if (virt && riscv_cpu_cfg(env)->ext_shwgd) {
+        if (!env->hwiddeleg) {
+            /*
+            * When hwiddeleg CSR is zero, access to vslwid raises an illegal
+            * instruction exception.
+            */
+            return RISCV_EXCP_ILLEGAL_INST;
+        }
+
+        if (ret_val) {
+            *ret_val = env->vslwid;
+        }
+
+        if (!(BIT(new_vslwid) & env->hwiddeleg)) {
+            /* Set WID to lowest legal value if writing illegal value (WARL) */
+            new_vslwid = find_first_bit(
+                (unsigned long *)&env->hwiddeleg, TARGET_LONG_BITS);
+        }
+
+        if (env->vslwid != new_vslwid) {
+            env->vslwid = new_vslwid;
+            tlb_flush(env_cpu(env));
+        }
+    }
+    else {
+        if (!env->mwiddeleg) {
+            /*
+            * When mwiddeleg CSR is zero, access to slwid raises an illegal
+            * instruction exception.
+            */
+            return RISCV_EXCP_ILLEGAL_INST;
+        }
+
+        if (ret_val) {
+            *ret_val = env->slwid;
+        }
+
+        if (!(BIT(new_slwid) & env->mwiddeleg)) {
+            /* Set WID to lowest legal value if writing illegal value (WARL) */
+            new_slwid = find_first_bit(
+                (unsigned long *)&env->mwiddeleg, TARGET_LONG_BITS);
+        }
+
+        if (env->slwid != new_slwid) {
+            env->slwid = new_slwid;
+            tlb_flush(env_cpu(env));
+        }
+    }
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_hwiddeleg(CPURISCVState *env, int csrno,
+                                    target_ulong *ret_val,
+                                    target_ulong new_val, target_ulong wr_mask)
+{
+    if (ret_val) {
+        *ret_val = env->hwiddeleg;
+    }
+
+    env->hwiddeleg = (env->hwiddeleg & ~wr_mask) | (new_val & wr_mask);
+
+    /* We can only have what is at least on the mwiddeleg. */
+    env->hwiddeleg &= env->mwiddeleg;
+
+    // According to the spec, vslwid must reset to the lowest permissible value in hwiddeleg
+    rmw_slwid(env, csrno, ret_val, env->vslwid, env->vslwid);
 
     return RISCV_EXCP_NONE;
 }
@@ -4365,8 +4455,19 @@ static RISCVException rmw_mwiddeleg(CPURISCVState *env, int csrno,
     /* Core wgMarker can only have WID value in mwidlist. */
     env->mwiddeleg &= cpu->cfg.mwidlist;
 
+    // Shwgd?
+    if(riscv_cpu_cfg(env)->ext_shwgd){
+        // Force an update to hslwid
+        rmw_hslwid(env, csrno, NULL, env->hslwid, env->hslwid);
+
+        if(env->hwiddeleg){
+            // Force an update to hwiddeleg has it is being used
+            rmw_hwiddeleg(env, csrno, NULL, env->hwiddeleg, env->hwiddeleg);
+        }
+    }
+
     // According to the spec, slwid must reset to the lowest permissible value in mwiddeleg
-    rmw_slwid(env, csrno, ret_val, env->slwid, wr_mask);
+    rmw_slwid(env, csrno, NULL, env->slwid, env->slwid);
 
     return RISCV_EXCP_NONE;
 }
@@ -5340,5 +5441,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MLWID]     = { "mlwid",     worldguard_umode,  NULL, NULL, rmw_mlwid },
     [CSR_SLWID]     = { "slwid",     worldguard_sumode, NULL, NULL, rmw_slwid },
     [CSR_MWIDDELEG] = { "mwiddeleg", worldguard_sumode, NULL, NULL, rmw_mwiddeleg },
+    [CSR_HSLWID]    = { "hslwid",    worldguard_hmode,  NULL, NULL, rmw_hslwid },
+    [CSR_HWIDDELEG] = { "hwiddeleg", worldguard_hmode,  NULL, NULL, rmw_hwiddeleg },
 #endif /* !CONFIG_USER_ONLY */
 };

@@ -436,6 +436,9 @@ struct CPUArchState {
     target_ulong mlwid;
     target_ulong slwid;
     target_ulong mwiddeleg;
+    target_ulong hslwid;
+    target_ulong hwiddeleg;
+    target_ulong vslwid;
 
     /* machine specific WorldGuard callback */
     void (*wg_reset)(CPURISCVState *env);

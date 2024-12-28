@@ -123,6 +123,7 @@ struct RISCVCPUConfig {
     bool ext_smwg;
     bool ext_smwgd;
     bool ext_sswg;
+    bool ext_shwgd;
     bool rvv_ta_all_1s;
     bool rvv_ma_all_1s;
 

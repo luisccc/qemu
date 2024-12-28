@@ -254,6 +254,8 @@
 #define CSR_HSTATEEN2H      0x61E
 #define CSR_HSTATEEN3       0x60F
 #define CSR_HSTATEEN3H      0x61F
+#define CSR_HSLWID          0x622
+#define CSR_HWIDDELEG       0x623
 
 /* Virtual CSRs */
 #define CSR_VSSTATUS        0x200
