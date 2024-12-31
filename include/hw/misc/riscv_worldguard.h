@@ -45,7 +45,7 @@ struct RISCVWorldGuardState {
 };
 
 extern struct RISCVWorldGuardState *worldguard_config;
-extern uint64_t wgc_slot_perm_mask;
+extern uint64_t wgc_slot_perm_mask, wgc_slot_permh_mask, wgc_slot_permh2_mask, wgc_slot_permh3_mask;
 
 DeviceState *riscv_worldguard_create(uint32_t nworlds, uint32_t trustedwid,
                                      bool hw_bypass, bool tz_compat);
@@ -67,6 +67,9 @@ struct WgCheckerSlot {
     uint64_t addr;
     uint64_t perm;
     uint32_t cfg;
+    uint64_t permh;
+    uint64_t permh2;
+    uint64_t permh3;
 };
 
 typedef struct WgCheckerRegion WgCheckerRegion;

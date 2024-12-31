@@ -254,8 +254,6 @@
 #define CSR_HSTATEEN2H      0x61E
 #define CSR_HSTATEEN3       0x60F
 #define CSR_HSTATEEN3H      0x61F
-#define CSR_HSLWID          0x622
-#define CSR_HWIDDELEG       0x623
 
 /* Virtual CSRs */
 #define CSR_VSSTATUS        0x200
@@ -364,8 +362,20 @@
 
 /* RISC-V WorldGuard */
 #define CSR_MLWID           0x390
+
 #define CSR_SLWID           0x190
 #define CSR_MWIDDELEG       0x748
+#define CSR_MWIDDELEGH      0x749
+
+#define CSR_MWIDDELEGH2     0x74A
+#define CSR_MWIDDELEGH3     0x74B
+
+#define CSR_HSLWID          0x622
+#define CSR_HWIDDELEG       0x623
+#define CSR_HWIDDELEGH      0x624
+
+#define CSR_HWIDDELEGH2     0x625
+#define CSR_HWIDDELEGH3     0x626
 
 /* Performance Counters */
 #define CSR_MHPMCOUNTER3    0xb03

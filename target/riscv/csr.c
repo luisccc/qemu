@@ -4300,6 +4300,26 @@ static RISCVException worldguard_hmode(CPURISCVState *env, int csrno)
     return hmode(env, csrno);
 }
 
+static RISCVException worldguard_mdeleg(CPURISCVState *env, int csrno)
+{
+    // If the extension is enabled, just make sure the base implementation is supporting to
+    if (!riscv_cpu_cfg(env)->ext_slwgd) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return worldguard_sumode(env, csrno);
+}
+
+static RISCVException worldguard_hdeleg(CPURISCVState *env, int csrno)
+{
+    // If the extension is enabled, just make sure the base implementation is supporting to
+    if (!riscv_cpu_cfg(env)->ext_slwgd) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return worldguard_hmode(env, csrno);
+}
+
 static RISCVException rmw_mlwid(CPURISCVState *env, int csrno,
                                 target_ulong *ret_val,
                                 target_ulong new_val, target_ulong wr_mask)
@@ -4307,19 +4327,33 @@ static RISCVException rmw_mlwid(CPURISCVState *env, int csrno,
     CPUState *cs = env_cpu(env);
     RISCVCPU *cpu = RISCV_CPU(cs);
     target_ulong new_mlwid = (env->mlwid & ~wr_mask) | (new_val & wr_mask);
+    target_ulong aux_mlwid = new_mlwid, mwidlist;
+    bool rv32 = riscv_cpu_mxl(env) == MXL_RV32 ? true : false;
+
+    // If slwgd is enabled or RV64, we can use the actual mwidlist (64 bits),
+    // otherwise if we are in RV32, we have to use the lower 32 bits,
+    g_assert(cpu->cfg.mwidlist);
+    mwidlist = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? cpu->cfg.mwidlist & 0xFFFF : cpu->cfg.mwidlist;
 
     if (ret_val) {
         *ret_val = env->mlwid;
     }
 
-    g_assert(cpu->cfg.mwidlist);
-    if (!(BIT(new_mlwid) & cpu->cfg.mwidlist)) {
+    if (!(BIT(new_mlwid) & mwidlist)) {
         /* Set WID to lowest legal value if writing illegal value (WARL) */
-        new_mlwid = find_first_bit((unsigned long *)&cpu->cfg.mwidlist, 32);
+        aux_mlwid = find_first_bit((unsigned long *)&mwidlist, 64);
     }
 
-    if (env->mlwid != new_mlwid) {
-        env->mlwid = new_mlwid;
+    // If mwidlist is 0, and slwgd is enabled, we have to check the mwidlisth2
+    if (riscv_cpu_cfg(env)->ext_slwgd && !mwidlist) {
+        if (!(BIT(new_mlwid) & cpu->cfg.mwidlisth)) {
+            /* Set WID to lowest legal value if writing illegal value (WARL) */
+            aux_mlwid = find_first_bit((unsigned long *)&cpu->cfg.mwidlisth, 64);
+        }
+    }
+    
+    if (env->mlwid != aux_mlwid) {
+        env->mlwid = aux_mlwid;
         tlb_flush(cs);
     }
 
@@ -4332,27 +4366,44 @@ static RISCVException rmw_hslwid(CPURISCVState *env, int csrno,
 {
     CPUState *cs = env_cpu(env);
     target_ulong new_hslwid = (env->hslwid & ~wr_mask) | (new_val & wr_mask);
+    target_ulong aux_hslwid = new_hslwid, mwiddeleg;
+    bool rv32 = riscv_cpu_mxl(env) == MXL_RV32 ? true : false;
 
-    if (!env->mwiddeleg) {
+    // If slwgd is enabled or RV64, we can use the actual mwiddeleg (64 bits),
+    // otherwise if we are in RV32, we have to use the lower 32 bits,
+    mwiddeleg = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? env->mwiddeleg & 0xFFFF : env->mwiddeleg;
+
+    if (!mwiddeleg) {
         /*
-         * When mwiddeleg CSR is zero, access to hslwid raises an illegal
-         * instruction exception.
-         */
-        return RISCV_EXCP_ILLEGAL_INST;
+        * When mwiddeleg CSR is zero, access to hslwid raises an illegal
+        * instruction exception.
+        */
+        if (!riscv_cpu_cfg(env)->ext_slwgd) {
+            return RISCV_EXCP_ILLEGAL_INST;
+        }
+        else if (!env->mwiddelegh2)
+            return RISCV_EXCP_ILLEGAL_INST;
     }
 
     if (ret_val) {
         *ret_val = env->hslwid;
     }
 
-    if (!(BIT(new_hslwid) & env->mwiddeleg)) {
+    if (!(BIT(new_hslwid) & mwiddeleg)) {
         /* Set WID to lowest legal value if writing illegal value (WARL) */
-        new_hslwid = find_first_bit(
-            (unsigned long *)&env->mwiddeleg, TARGET_LONG_BITS);
+        aux_hslwid = find_first_bit((unsigned long *)&mwiddeleg, 64);
     }
 
-    if (env->hslwid != new_hslwid) {
-        env->hslwid = new_hslwid;
+    // If mwiddeleg is 0, and slwgd is enabled, we have to check the mwiddelegh2
+    if (riscv_cpu_cfg(env)->ext_slwgd && !mwiddeleg) {
+        if (!(BIT(new_hslwid) & env->mwiddelegh2)) {
+            /* Set WID to lowest legal value if writing illegal value (WARL) */
+            aux_hslwid = find_first_bit((unsigned long *)&env->mwiddelegh2, 64);
+        }
+    }
+
+    if (env->hslwid != aux_hslwid) {
+        env->hslwid = aux_hslwid;
         tlb_flush(cs);
     }
 
@@ -4363,56 +4414,91 @@ static RISCVException rmw_slwid(CPURISCVState *env, int csrno,
                                 target_ulong *ret_val,
                                 target_ulong new_val, target_ulong wr_mask)
 {
-    target_ulong new_slwid  = (env->slwid & ~wr_mask) | (new_val & wr_mask);
-    target_ulong new_vslwid = (env->vslwid & ~wr_mask) | (new_val & wr_mask);
     bool virt = env->virt_enabled;
+    bool rv32 = riscv_cpu_mxl(env) == MXL_RV32 ? true : false;
 
     // If we are in virtual mode and shwgd, we are accessing vslwid
     if (virt && riscv_cpu_cfg(env)->ext_shwgd) {
-        if (!env->hwiddeleg) {
+        target_ulong new_vslwid = (env->vslwid & ~wr_mask) | (new_val & wr_mask);
+        target_ulong aux_vslwid = new_vslwid, hwiddeleg;
+
+        // If slwgd is enabled or RV64, we can use the actual hwiddeleg (64 bits),
+        // otherwise if we are in RV32, we have to use the lower 32 bits,
+        hwiddeleg = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? env->hwiddeleg & 0xFFFF : env->hwiddeleg;
+
+        if (!hwiddeleg) {
             /*
             * When hwiddeleg CSR is zero, access to vslwid raises an illegal
             * instruction exception.
             */
-            return RISCV_EXCP_ILLEGAL_INST;
+            if (!riscv_cpu_cfg(env)->ext_slwgd) {
+                return RISCV_EXCP_ILLEGAL_INST;
+            }
+            else if (!env->hwiddelegh2)
+                return RISCV_EXCP_ILLEGAL_INST;
         }
 
         if (ret_val) {
             *ret_val = env->vslwid;
         }
 
-        if (!(BIT(new_vslwid) & env->hwiddeleg)) {
+        if (!(BIT(new_vslwid) & hwiddeleg)) {
             /* Set WID to lowest legal value if writing illegal value (WARL) */
-            new_vslwid = find_first_bit(
-                (unsigned long *)&env->hwiddeleg, TARGET_LONG_BITS);
+            aux_vslwid = find_first_bit((unsigned long *)&hwiddeleg, 64);
         }
 
-        if (env->vslwid != new_vslwid) {
-            env->vslwid = new_vslwid;
+        // If hwiddeleg is 0, and slwgd is enabled, we have to check the hwiddelegh2
+        if (riscv_cpu_cfg(env)->ext_slwgd && !hwiddeleg) {
+            if (!(BIT(new_vslwid) & env->hwiddelegh2)) {
+                /* Set WID to lowest legal value if writing illegal value (WARL) */
+                aux_vslwid = find_first_bit((unsigned long *)&env->hwiddelegh2, 64);
+            }
+        }
+
+        if (env->vslwid != aux_vslwid) {
+            env->vslwid = aux_vslwid;
             tlb_flush(env_cpu(env));
         }
     }
     else {
-        if (!env->mwiddeleg) {
+        target_ulong new_slwid  = (env->slwid & ~wr_mask) | (new_val & wr_mask);
+        target_ulong aux_slwid = new_slwid, mwiddeleg;
+
+        // If slwgd is enabled or RV64, we can use the actual mwiddeleg (64 bits),
+        // otherwise if we are in RV32, we have to use the lower 32 bits,
+        mwiddeleg = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? env->mwiddeleg & 0xFFFF : env->mwiddeleg;
+
+        if (!mwiddeleg) {
             /*
-            * When mwiddeleg CSR is zero, access to slwid raises an illegal
+            * When mwiddeleg CSR is zero, access to hslwid raises an illegal
             * instruction exception.
             */
-            return RISCV_EXCP_ILLEGAL_INST;
+            if (!riscv_cpu_cfg(env)->ext_slwgd) {
+                return RISCV_EXCP_ILLEGAL_INST;
+            }
+            else if (!env->mwiddelegh2)
+                return RISCV_EXCP_ILLEGAL_INST;
         }
 
         if (ret_val) {
-            *ret_val = env->slwid;
+            *ret_val = env->hslwid;
         }
 
-        if (!(BIT(new_slwid) & env->mwiddeleg)) {
+        if (!(BIT(new_slwid) & mwiddeleg)) {
             /* Set WID to lowest legal value if writing illegal value (WARL) */
-            new_slwid = find_first_bit(
-                (unsigned long *)&env->mwiddeleg, TARGET_LONG_BITS);
+            aux_slwid = find_first_bit((unsigned long *)&mwiddeleg, 64);
         }
 
-        if (env->slwid != new_slwid) {
-            env->slwid = new_slwid;
+        // If mwiddeleg is 0, and slwgd is enabled, we have to check the mwiddelegh2
+        if (riscv_cpu_cfg(env)->ext_slwgd && !mwiddeleg) {
+            if (!(BIT(new_slwid) & env->mwiddelegh2)) {
+                /* Set WID to lowest legal value if writing illegal value (WARL) */
+                aux_slwid = find_first_bit((unsigned long *)&env->mwiddelegh2, 64);
+            }
+        }
+
+        if (env->slwid != aux_slwid) {
+            env->slwid = aux_slwid;
             tlb_flush(env_cpu(env));
         }
     }
@@ -4420,18 +4506,32 @@ static RISCVException rmw_slwid(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
-static RISCVException rmw_hwiddeleg(CPURISCVState *env, int csrno,
-                                    target_ulong *ret_val,
-                                    target_ulong new_val, target_ulong wr_mask)
+static RISCVException rmw_hwiddeleg64(CPURISCVState *env, int csrno,
+                                    uint64_t *ret_val,
+                                    uint64_t new_val, uint64_t wr_mask)
 {
-    if (ret_val) {
-        *ret_val = env->hwiddeleg;
+    target_ulong *ptr;
+
+    if(csrno >= CSR_HWIDDELEGH2){
+        ptr = &(env->hwiddelegh2);
+    }
+    else {
+        ptr = &(env->hwiddeleg);
     }
 
-    env->hwiddeleg = (env->hwiddeleg & ~wr_mask) | (new_val & wr_mask);
+    if (ret_val) {
+        *ret_val = *ptr;
+    }
+
+    *ptr = (*ptr & ~wr_mask) | (new_val & wr_mask);
 
     /* We can only have what is at least on the mwiddeleg. */
-    env->hwiddeleg &= env->mwiddeleg;
+    if(csrno >= CSR_HWIDDELEGH2){
+        *ptr &= env->mwiddelegh2;
+    }
+    else {
+        *ptr &= env->mwiddeleg;
+    }
 
     // According to the spec, vslwid must reset to the lowest permissible value in hwiddeleg
     rmw_slwid(env, csrno, ret_val, env->vslwid, env->vslwid);
@@ -4439,30 +4539,86 @@ static RISCVException rmw_hwiddeleg(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
-static RISCVException rmw_mwiddeleg(CPURISCVState *env, int csrno,
+static RISCVException rmw_hwiddeleg(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval;
+    RISCVException ret;
+
+    ret = rmw_hwiddeleg64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_hwiddelegh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval;
+    RISCVException ret;
+
+    ret = rmw_hwiddeleg64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_mwiddeleg64(CPURISCVState *env, int csrno,
                                     target_ulong *ret_val,
                                     target_ulong new_val, target_ulong wr_mask)
 {
     CPUState *cs = env_cpu(env);
     RISCVCPU *cpu = RISCV_CPU(cs);
+    bool rv32 = riscv_cpu_mxl(env) == MXL_RV32 ? true : false;
 
-    if (ret_val) {
-        *ret_val = env->mwiddeleg;
+    target_ulong *ptr;
+
+    if(csrno >= CSR_MWIDDELEGH2){
+        // We can not access this registers if the extension is not enabled
+        if(!riscv_cpu_cfg(env)->ext_shwgd)
+            return RISCV_EXCP_ILLEGAL_INST;
+
+        ptr = &(env->mwiddelegh2);
+    }
+    else {
+        // We can not access this register in simple rv32 implementations
+        if(csrno == CSR_MWIDDELEGH && rv32 && !riscv_cpu_cfg(env)->ext_shwgd)
+            return RISCV_EXCP_ILLEGAL_INST;
+
+        ptr = &(env->mwiddeleg);
     }
 
-    env->mwiddeleg = (env->mwiddeleg & ~wr_mask) | (new_val & wr_mask);
+    if (ret_val) {
+        *ret_val = *ptr;
+    }
+
+    *ptr = (*ptr & ~wr_mask) | (new_val & wr_mask);
 
     /* Core wgMarker can only have WID value in mwidlist. */
-    env->mwiddeleg &= cpu->cfg.mwidlist;
+    if(csrno >= CSR_MWIDDELEGH2){
+        *ptr &= cpu->cfg.mwidlisth;
+    }
+    else {
+        *ptr &= cpu->cfg.mwidlist;
+    }
 
     // Shwgd?
     if(riscv_cpu_cfg(env)->ext_shwgd){
         // Force an update to hslwid
         rmw_hslwid(env, csrno, NULL, env->hslwid, env->hslwid);
 
-        if(env->hwiddeleg){
+        if(env->hwiddeleg || env->hwiddelegh2){
             // Force an update to hwiddeleg has it is being used
-            rmw_hwiddeleg(env, csrno, NULL, env->hwiddeleg, env->hwiddeleg);
+            rmw_hwiddeleg(env, CSR_HWIDDELEG, NULL, env->hwiddeleg, env->hwiddeleg);
+            rmw_hwiddeleg(env, CSR_HWIDDELEGH2, NULL, env->hwiddelegh2, env->hwiddelegh2);
         }
     }
 
@@ -4470,6 +4626,37 @@ static RISCVException rmw_mwiddeleg(CPURISCVState *env, int csrno,
     rmw_slwid(env, csrno, NULL, env->slwid, env->slwid);
 
     return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_mwiddeleg(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval;
+    RISCVException ret;
+    ret = rmw_mwiddeleg64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_mwiddelegh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval;
+    RISCVException ret;
+
+    ret = rmw_mwiddeleg64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
 }
 #endif
 
@@ -5440,8 +5627,16 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     /* RISC-V WorldGuard */
     [CSR_MLWID]     = { "mlwid",     worldguard_umode,  NULL, NULL, rmw_mlwid },
     [CSR_SLWID]     = { "slwid",     worldguard_sumode, NULL, NULL, rmw_slwid },
-    [CSR_MWIDDELEG] = { "mwiddeleg", worldguard_sumode, NULL, NULL, rmw_mwiddeleg },
     [CSR_HSLWID]    = { "hslwid",    worldguard_hmode,  NULL, NULL, rmw_hslwid },
-    [CSR_HWIDDELEG] = { "hwiddeleg", worldguard_hmode,  NULL, NULL, rmw_hwiddeleg },
+
+    [CSR_MWIDDELEG]  = { "mwiddeleg", worldguard_sumode, NULL, NULL, rmw_mwiddeleg },
+    [CSR_MWIDDELEGH] = { "mwiddelegh", worldguard_mdeleg, NULL, NULL, rmw_mwiddelegh },
+    [CSR_MWIDDELEGH2] = { "mwiddelegh2", worldguard_mdeleg, NULL, NULL, rmw_mwiddeleg },
+    [CSR_MWIDDELEGH3] = { "mwiddelegh3", worldguard_mdeleg, NULL, NULL, rmw_mwiddelegh },
+
+    [CSR_HWIDDELEG]  = { "hwiddeleg", worldguard_hmode,  NULL, NULL, rmw_hwiddeleg },
+    [CSR_HWIDDELEGH] = { "hwiddelegh", worldguard_hdeleg,  NULL, NULL, rmw_hwiddelegh },
+    [CSR_HWIDDELEGH2] = { "hwiddelegh2", worldguard_hdeleg,  NULL, NULL, rmw_hwiddeleg },
+    [CSR_HWIDDELEGH3] = { "hwiddelegh3", worldguard_hdeleg,  NULL, NULL, rmw_hwiddelegh },
 #endif /* !CONFIG_USER_ONLY */
 };

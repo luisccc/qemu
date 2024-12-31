@@ -155,11 +155,22 @@ static uint32_t riscv_cpu_wg_get_wid(CPURISCVState *env, int mode)
     CPUState *cs = env_cpu(env);
     RISCVCPU *cpu = RISCV_CPU(cs);
     bool virt = env->virt_enabled;
+    bool rv32 = riscv_cpu_mxl(env) == MXL_RV32 ? true : false;
+    target_ulong mwiddeleg, hwiddeleg;
+
+    // If slwgd is enabled, we can use the actual mwiddeleg & mwiddelegh2,
+    // otherwise if we are in RV32, we have to use the lower 32 bits,
+    mwiddeleg = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? env->mwiddeleg & 0xFFFF : 
+                (riscv_cpu_cfg(env)->ext_slwgd? env->mwiddeleg & env->mwiddelegh2 : env->mwiddeleg);
+    // If slwgd is enabled, we can use the actual hwiddeleg & hwiddelegh2,
+    // otherwise if we are in RV32, we have to use the lower 32 bits,
+    hwiddeleg = rv32 && !(riscv_cpu_cfg(env)->ext_slwgd)? env->hwiddeleg & 0xFFFF : 
+                (riscv_cpu_cfg(env)->ext_slwgd? env->hwiddeleg & env->hwiddelegh2 : env->hwiddeleg);
 
     if (mode == PRV_M) {
         return cpu->cfg.mwid;
     } else if (mode == PRV_S) {
-        if (!virt || !env->mwiddeleg) {
+        if (!virt || !mwiddeleg) {
             /* HS-mode, S-mode w/o RVH, or VS-mode but mwiddeleg = 0 */
             return env->mlwid;
         } else {
@@ -171,7 +182,7 @@ static uint32_t riscv_cpu_wg_get_wid(CPURISCVState *env, int mode)
             return env->hslwid;
         }
     } else if (mode == PRV_U) {
-        if (!riscv_has_ext(env, RVS) || !env->mwiddeleg) {
+        if (!riscv_has_ext(env, RVS) || !mwiddeleg) {
             /* M/U mode CPU or mwiddeleg = 0 */
             return env->mlwid;
         } else {
@@ -179,7 +190,7 @@ static uint32_t riscv_cpu_wg_get_wid(CPURISCVState *env, int mode)
                 return env->slwid;
             }
             else {
-                if(!env->hwiddeleg)
+                if(!hwiddeleg)
                     return env->hslwid;
                 
                 return env->vslwid;

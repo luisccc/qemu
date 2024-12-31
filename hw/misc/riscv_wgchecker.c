@@ -65,8 +65,11 @@ REG32(SLOT_CFG,             0x010)
     FIELD(SLOT_CFG, IR,         10, 1)
     FIELD(SLOT_CFG, IW,         11, 1)
     FIELD(SLOT_CFG, LOCK,       31, 1)
+REG64(SLOT_PERMH,           0x0018)
+REG64(SLOT_PERMH2,          0x0020)
+REG64(SLOT_PERMH3,          0x0028)
 
-#define SLOT_SIZE               0x020
+#define SLOT_SIZE               0x040
 
 #define SLOT0_CFG_MASK \
     (R_SLOT_CFG_ER_MASK | \
@@ -220,8 +223,17 @@ static WgAccessResult wgc_check_access(
 
         /* wgChecker slot range is between start to (end - 1). */
         if ((start <= phys_addr) && (phys_addr < end)) {
+            int perm;
+
             /* Match the wgC slot */
-            int perm = ((slot->perm >> (wid * 2)) & 0x3);
+            if(wid > 95) {
+                perm = ((slot->permh3 >> ((wid - 96) * 2)) & 0x3);
+            } else if(wid > 63) {
+                perm = ((slot->permh2 >> ((wid - 64) * 2)) & 0x3);
+            } else if(wid > 31) {
+                perm = ((slot->permh >> ((wid - 32) * 2)) & 0x3);
+            } else
+                perm = ((slot->perm >> (wid * 2)) & 0x3);
 
             /* If any matching rule permits access, the access is permitted. */
             wgc_perm |= perm;
@@ -425,6 +437,15 @@ static uint64_t riscv_wgchecker_readq(void *opaque, hwaddr addr)
         case A_SLOT_PERM:
             val = s->slots[slot_id].perm;
             break;
+        case A_SLOT_PERMH:
+            val = s->slots[slot_id].permh;
+            break;
+        case A_SLOT_PERMH2:
+            val = s->slots[slot_id].permh2;
+            break;
+        case A_SLOT_PERMH3:
+            val = s->slots[slot_id].permh3;
+            break;
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: Unexpected memory access to (0x%" HWADDR_PRIX ", %u) \n",
@@ -480,6 +501,24 @@ static uint64_t riscv_wgchecker_readl(void *opaque, hwaddr addr)
             break;
         case A_SLOT_CFG:
             val = s->slots[slot_id].cfg & SLOT_CFG_MASK;
+            break;
+        case A_SLOT_PERMH:
+            val = extract64(s->slots[slot_id].permh, 0, 32);
+            break;
+        case A_SLOT_PERMH + 4:
+            val = extract64(s->slots[slot_id].permh, 32, 32);
+            break;
+        case A_SLOT_PERMH2:
+            val = extract64(s->slots[slot_id].permh2, 0, 32);
+            break;
+        case A_SLOT_PERMH2 + 4:
+            val = extract64(s->slots[slot_id].permh2, 32, 32);
+            break;
+        case A_SLOT_PERMH3:
+            val = extract64(s->slots[slot_id].permh3, 0, 32);
+            break;
+        case A_SLOT_PERMH3 + 4:
+            val = extract64(s->slots[slot_id].perm, 32, 32);
             break;
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
@@ -655,6 +694,18 @@ static void riscv_wgchecker_writeq(void *opaque, hwaddr addr,
             value &= wgc_slot_perm_mask;
             s->slots[slot_id].perm = value;
             break;
+        case A_SLOT_PERMH:
+            value &= wgc_slot_permh_mask;
+            s->slots[slot_id].permh = value;
+            break;
+        case A_SLOT_PERMH2:
+            value &= wgc_slot_permh2_mask;
+            s->slots[slot_id].permh2 = value;
+            break;
+        case A_SLOT_PERMH3:
+            value &= wgc_slot_permh3_mask;
+            s->slots[slot_id].permh3 = value;
+            break;
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: Unexpected memory access to (0x%" HWADDR_PRIX ", %u) \n",
@@ -753,6 +804,37 @@ static void riscv_wgchecker_writel(void *opaque, hwaddr addr,
                 s->slots[slot_id].cfg = value;
             }
             break;
+        case A_SLOT_PERMH:
+            value &= wgc_slot_permh_mask;
+            s->slots[slot_id].permh = deposit64(
+                s->slots[slot_id].permh, 0, 32, value);
+            break;
+        case A_SLOT_PERMH + 4:
+            value &= extract64(wgc_slot_permh_mask, 32, 32);
+            s->slots[slot_id].permh = deposit64(
+                s->slots[slot_id].permh, 32, 32, value);
+            break;
+        case A_SLOT_PERMH2:
+            value &= wgc_slot_permh_mask;
+            s->slots[slot_id].permh = deposit64(
+                s->slots[slot_id].permh, 0, 32, value);
+            break;
+        case A_SLOT_PERMH2 + 4:
+            value &= extract64(wgc_slot_permh2_mask, 32, 32);
+            s->slots[slot_id].permh2 = deposit64(
+                s->slots[slot_id].permh2, 32, 32, value);
+            break;
+        case A_SLOT_PERMH3:
+            value &= wgc_slot_permh3_mask;
+            s->slots[slot_id].permh3 = deposit64(
+                s->slots[slot_id].permh3, 0, 32, value);
+            break;
+        case A_SLOT_PERMH3 + 4:
+            value &= extract64(wgc_slot_permh3_mask, 32, 32);
+            s->slots[slot_id].permh3 = deposit64(
+                s->slots[slot_id].permh3, 32, 32, value);
+            break;
+        
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: Unexpected memory access to (0x%" HWADDR_PRIX ", %u) \n",

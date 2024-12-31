@@ -39,7 +39,7 @@
 struct RISCVWorldGuardState *worldguard_config = NULL;
 
 /* perm field bitmask of wgChecker slot, it's depends on NWorld. */
-uint64_t wgc_slot_perm_mask = 0;
+uint64_t wgc_slot_perm_mask = 0, wgc_slot_permh_mask = 0, wgc_slot_permh2_mask = 0, wgc_slot_permh3_mask = 0;
 
 static Property riscv_worldguard_properties[] = {
     DEFINE_PROP_UINT32("nworlds", RISCVWorldGuardState, nworlds, 0),
@@ -138,13 +138,24 @@ static void riscv_cpu_wg_reset(CPURISCVState *env)
 
     /* Check mwid, mwidlist config */
     if (worldguard_config != NULL) {
-        uint32_t valid_widlist = MAKE_64BIT_MASK(0, worldguard_config->nworlds);
+        uint64_t valid_widlist;
 
-        /* CPU use default mwid / mwidlist config if not set */
-        if (cpu->cfg.mwidlist == UINT32_MAX) {
-            /* mwidlist contains all WIDs */
-            cpu->cfg.mwidlist = valid_widlist;
+        if (worldguard_config->nworlds > 63)
+            valid_widlist = ~0;
+        else
+            valid_widlist = MAKE_64BIT_MASK(0, worldguard_config->nworlds);
+        
+        if (riscv_cpu_cfg(env)->ext_slwgd) {
+            if (worldguard_config->nworlds > 63) {
+                cpu->cfg.mwidlisth = MAKE_64BIT_MASK(0, worldguard_config->nworlds - 64);
+            }
+            else {
+                cpu->cfg.mwidlisth = 0;
+            }
         }
+
+        cpu->cfg.mwidlist = valid_widlist;
+
         if (cpu->cfg.mwid == UINT32_MAX) {
             // If it is the first Core make it trustedwid
             cpu->cfg.mwid = trustedwid; //(cs->cpu_index == 0 || worldguard_config->hw_bypass) ? trustedwid : 0;
@@ -177,6 +188,7 @@ void riscv_worldguard_apply_cpu(uint32_t hartid)
     }
     if (riscv_has_ext(env, RVH)) {
         rcpu->cfg.ext_shwgd = true;
+        rcpu->cfg.ext_slwgd = true;
     }
 
     /* Set machine specific WorldGuard callback */
@@ -235,7 +247,20 @@ static void riscv_worldguard_realize(DeviceState *dev, Error **errp)
     worldguard_config = s;
 
     /* Initialize global data for wgChecker */
-    wgc_slot_perm_mask = MAKE_64BIT_MASK(0, 2 * worldguard_config->nworlds);
+    if(worldguard_config->nworlds > 95) {
+        wgc_slot_perm_mask   = ~(0);
+        wgc_slot_permh_mask  = ~(0);
+        wgc_slot_permh2_mask = ~(0);
+        wgc_slot_permh3_mask = MAKE_64BIT_MASK(0, 2 * (worldguard_config->nworlds - 96));
+    } else if(worldguard_config->nworlds > 63) {
+        wgc_slot_perm_mask   = ~(0);
+        wgc_slot_permh_mask  = ~(0);
+        wgc_slot_permh2_mask = MAKE_64BIT_MASK(0, 2 * (worldguard_config->nworlds - 64));
+    } else if(worldguard_config->nworlds > 31) {
+        wgc_slot_perm_mask   = ~(0);
+        wgc_slot_permh_mask = MAKE_64BIT_MASK(0, 2 * (worldguard_config->nworlds - 32));
+    } else
+        wgc_slot_perm_mask = MAKE_64BIT_MASK(0, 2 * worldguard_config->nworlds);
 }
 
 static void riscv_worldguard_class_init(ObjectClass *klass, void *data)

@@ -436,8 +436,10 @@ struct CPUArchState {
     target_ulong mlwid;
     target_ulong slwid;
     target_ulong mwiddeleg;
+    target_ulong mwiddelegh2;
     target_ulong hslwid;
     target_ulong hwiddeleg;
+    target_ulong hwiddelegh2;
     target_ulong vslwid;
 
     /* machine specific WorldGuard callback */

@@ -124,6 +124,7 @@ struct RISCVCPUConfig {
     bool ext_smwgd;
     bool ext_sswg;
     bool ext_shwgd;
+    bool ext_slwgd;
     bool rvv_ta_all_1s;
     bool rvv_ma_all_1s;
 
@@ -168,7 +169,8 @@ struct RISCVCPUConfig {
     bool debug;
     bool misa_w;
     uint32_t mwid;
-    uint32_t mwidlist;
+    uint64_t mwidlist;
+    uint64_t mwidlisth;
 
     bool short_isa_string;
 
