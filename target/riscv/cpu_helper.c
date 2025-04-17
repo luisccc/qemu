@@ -35,6 +35,7 @@
 #include "cpu_bits.h"
 #include "debug.h"
 #include "pmp.h"
+#include "spmp.h"
 
 int riscv_env_mmu_index(CPURISCVState *env, bool ifetch)
 {
@@ -1209,6 +1210,41 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot, hwaddr addr,
     return TRANSLATE_SUCCESS;
 }
 
+/*
+ * get_physical_address_spmp - check SPMP permission for this physical address
+ *
+ * Match the SPMP region and check permission for this physical address.
+ * Returns 0 if the permission checking was successful.
+ * The SPMP check is happened before the PMP check.
+ *
+ * @env: CPURISCVState
+ * @prot: The returned protection attributes
+ * @addr: The physical address to be checked permission
+ * @access_type: The type of access
+ * @mode: Indicates current privilege level.
+ */
+static int get_physical_address_spmp(CPURISCVState *env, int *prot, hwaddr addr,
+                                    int size, int access_type,
+                                    int mode)
+{
+    spmp_priv_t spmp_priv;
+
+    if (!riscv_cpu_cfg(env)->spmp) {
+        *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        return TRANSLATE_SUCCESS;
+    }
+
+    if (!spmp_hart_has_privs(env, addr, size, 1 << access_type, &spmp_priv,
+                            mode)) {
+        *prot = 0;
+        return TRANSLATE_SPMP_FAIL;
+    }
+
+    *prot = spmp_priv_to_page_prot(spmp_priv);
+
+    return TRANSLATE_SUCCESS;
+}
+
 /* Returns 'true' if a svukte address check is needed */
 static bool do_svukte_check(CPURISCVState *env, bool first_stage,
                              int mode, bool virt)
@@ -1859,8 +1895,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     CPURISCVState *env = &cpu->env;
     vaddr im_address;
     hwaddr pa = 0;
-    int prot, prot2, prot_pmp;
+    int prot, prot2, prot_pmp, prot_spmp;
     bool pmp_violation = false;
+    // bool spmp_violation = false;
     bool first_stage_error = true;
     bool two_stage_lookup = mmuidx_2stage(mmu_idx);
     bool two_stage_indirect_error = false;
@@ -1948,16 +1985,51 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       __func__, address, ret, pa, prot);
 
         if (ret == TRANSLATE_SUCCESS) {
-            ret = get_physical_address_pmp(env, &prot_pmp, pa,
-                                           size, access_type, mode);
-            tlb_size = pmp_get_tlb_size(env, pa);
+            /*
+             * The SPMP and the paging mechanism will not
+             * take effect simultaneously.
+             * Check both SPMP and PMP if the core is running in bare mode
+             * or the HW does not implement an MMU.
+             * Check PMP only if paging is enabled.
+             */
+            int vm;
+            if (riscv_cpu_mxl(env) == MXL_RV32) {
+                vm = get_field(env->satp, SATP32_MODE);
+            } else {
+                vm = get_field(env->satp, SATP64_MODE);
+            }
 
-            qemu_log_mask(CPU_LOG_MMU,
-                          "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
-                          " %d tlb_size %" HWADDR_PRIu "\n",
-                          __func__, pa, ret, prot_pmp, tlb_size);
+            if (vm == VM_1_10_MBARE) {
+                /* S-mode Physical Memory Protection check */
+                ret = get_physical_address_spmp(env, &prot_spmp, pa,
+                                                size, access_type, mode);
 
-            prot &= prot_pmp;
+                qemu_log_mask(CPU_LOG_SPMP,
+                            "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
+                            __func__, pa, ret, prot_spmp);
+
+                prot &= prot_spmp;
+
+                if (ret == TRANSLATE_SPMP_FAIL) {
+                    // spmp_violation = true;
+                    qemu_log_mask(CPU_LOG_SPMP,
+                            "SPMP Check failed\n");
+                }
+            }
+
+            /* Only apply checks when the SPMP passed */
+			if (ret != TRANSLATE_SPMP_FAIL) {
+                ret = get_physical_address_pmp(env, &prot_pmp, pa,
+                                            size, access_type, mode);
+                tlb_size = pmp_get_tlb_size(env, pa);
+
+                qemu_log_mask(CPU_LOG_MMU,
+                            "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
+                            " %d tlb_size %" HWADDR_PRIu "\n",
+                            __func__, pa, ret, prot_pmp, tlb_size);
+
+                prot &= prot_pmp;
+            }
         }
     }
 

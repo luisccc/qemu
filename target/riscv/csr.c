@@ -751,6 +751,15 @@ static RISCVException pmp(CPURISCVState *env, int csrno)
     return RISCV_EXCP_ILLEGAL_INST;
 }
 
+static RISCVException spmp(CPURISCVState *env, int csrno)
+{
+    if (riscv_cpu_cfg(env)->spmp) {
+        return RISCV_EXCP_NONE;
+    }
+
+    return RISCV_EXCP_ILLEGAL_INST;
+}
+
 static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
 {
     if (riscv_cpu_cfg(env)->ext_smepmp) {
@@ -5253,6 +5262,53 @@ static RISCVException write_pmpaddr(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+/* S-mode Physical Memory Protection */
+static bool check_spmp_reg_index(CPURISCVState *env, uint32_t reg_index)
+{
+    if ((reg_index & 1) && (riscv_cpu_mxl(env) == MXL_RV64)) {
+        return false;
+    }
+    return true;
+}
+
+static RISCVException read_spmpcfg(CPURISCVState *env, int csrno,
+                                  target_ulong *val)
+{
+    uint32_t reg_index = csrno - CSR_SPMPCFG0;
+
+    if (!check_spmp_reg_index(env, reg_index)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+    *val = spmpcfg_csr_read(env, csrno - CSR_SPMPCFG0);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_spmpcfg(CPURISCVState *env, int csrno,
+                                   target_ulong val)
+{
+    uint32_t reg_index = csrno - CSR_SPMPCFG0;
+
+    if (!check_spmp_reg_index(env, reg_index)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+    spmpcfg_csr_write(env, csrno - CSR_SPMPCFG0, val);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_spmpaddr(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = spmpaddr_csr_read(env, csrno - CSR_SPMPADDR0);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_spmpaddr(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    spmpaddr_csr_write(env, csrno - CSR_SPMPADDR0, val);
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException read_tselect(CPURISCVState *env, int csrno,
                                    target_ulong *val)
 {
@@ -6104,6 +6160,88 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR13]  = { "pmpaddr13", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR14] =  { "pmpaddr14", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
+
+        /* S-mode Physical Memory Protection */
+    [CSR_SPMPCFG0]    = { "spmpcfg0",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG1]    = { "spmpcfg1",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG2]    = { "spmpcfg2",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG3]    = { "spmpcfg3",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG4]    = { "spmpcfg4",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG5]    = { "spmpcfg5",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG6]    = { "spmpcfg6",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG7]    = { "spmpcfg7",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG8]    = { "spmpcfg8",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG9]    = { "spmpcfg9",   spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG10]   = { "spmpcfg10",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG11]   = { "spmpcfg11",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG12]   = { "spmpcfg12",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG13]   = { "spmpcfg13",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG14]   = { "spmpcfg14",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPCFG15]   = { "spmpcfg15",  spmp, read_spmpcfg,  write_spmpcfg  },
+    [CSR_SPMPADDR0]   = { "spmpaddr0",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR1]   = { "spmpaddr1",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR2]   = { "spmpaddr2",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR3]   = { "spmpaddr3",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR4]   = { "spmpaddr4",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR5]   = { "spmpaddr5",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR6]   = { "spmpaddr6",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR7]   = { "spmpaddr7",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR8]   = { "spmpaddr8",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR9]   = { "spmpaddr9",  spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR10]  = { "spmpaddr10", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR11]  = { "spmpaddr11", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR12]  = { "spmpaddr12", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR13]  = { "spmpaddr13", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR14]  = { "spmpaddr14", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR15]  = { "spmpaddr15", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR16]  = { "spmpaddr16", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR17]  = { "spmpaddr17", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR18]  = { "spmpaddr18", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR19]  = { "spmpaddr19", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR20]  = { "spmpaddr20", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR21]  = { "spmpaddr21", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR22]  = { "spmpaddr22", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR23]  = { "spmpaddr23", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR24]  = { "spmpaddr24", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR25]  = { "spmpaddr25", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR26]  = { "spmpaddr26", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR27]  = { "spmpaddr27", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR28]  = { "spmpaddr28", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR29]  = { "spmpaddr29", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR30]  = { "spmpaddr30", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR31]  = { "spmpaddr31", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR32]  = { "spmpaddr32", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR33]  = { "spmpaddr33", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR34]  = { "spmpaddr34", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR35]  = { "spmpaddr35", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR36]  = { "spmpaddr36", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR37]  = { "spmpaddr37", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR38]  = { "spmpaddr38", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR39]  = { "spmpaddr39", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR40]  = { "spmpaddr40", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR41]  = { "spmpaddr41", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR42]  = { "spmpaddr42", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR43]  = { "spmpaddr43", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR44]  = { "spmpaddr44", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR45]  = { "spmpaddr45", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR46]  = { "spmpaddr46", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR47]  = { "spmpaddr47", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR48]  = { "spmpaddr48", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR49]  = { "spmpaddr49", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR50]  = { "spmpaddr50", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR51]  = { "spmpaddr51", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR52]  = { "spmpaddr52", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR53]  = { "spmpaddr53", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR54]  = { "spmpaddr54", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR55]  = { "spmpaddr55", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR56]  = { "spmpaddr56", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR57]  = { "spmpaddr57", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR58]  = { "spmpaddr58", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR59]  = { "spmpaddr59", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR60]  = { "spmpaddr60", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR61]  = { "spmpaddr61", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR62]  = { "spmpaddr62", spmp, read_spmpaddr, write_spmpaddr },
+    [CSR_SPMPADDR63]  = { "spmpaddr63", spmp, read_spmpaddr, write_spmpaddr },
 
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },

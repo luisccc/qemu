@@ -480,6 +480,8 @@ const QEMULogItem qemu_log_items[] = {
       "include FPU registers in the 'cpu' logging" },
     { CPU_LOG_MMU, "mmu",
       "log MMU-related activities" },
+    { CPU_LOG_SPMP, "spmp",
+      "log SPMP-related activities" },
     { CPU_LOG_PCALL, "pcall",
       "x86 only: show protected mode far calls/returns/exceptions" },
     { CPU_LOG_RESET, "cpu_reset",
