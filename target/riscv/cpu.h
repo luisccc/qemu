@@ -438,6 +438,7 @@ struct CPUArchState {
     target_ulong mseccfg;
     
     /* S-mode Physical Memory Protection */
+    target_ulong sseccfg;
     spmp_table_t spmp_state;
 
     /* trigger module */

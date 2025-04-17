@@ -5263,6 +5263,20 @@ static RISCVException write_pmpaddr(CPURISCVState *env, int csrno,
 }
 
 /* S-mode Physical Memory Protection */
+static RISCVException read_sseccfg(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = sseccfg_csr_read(env);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_sseccfg(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    sseccfg_csr_write(env, val);
+    return RISCV_EXCP_NONE;
+}
+
 static bool check_spmp_reg_index(CPURISCVState *env, uint32_t reg_index)
 {
     if ((reg_index & 1) && (riscv_cpu_mxl(env) == MXL_RV64)) {
@@ -6162,6 +6176,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
 
         /* S-mode Physical Memory Protection */
+    [CSR_SPMPCFG0]    = { "sseccfg",    spmp, read_sseccfg,  write_sseccfg  },
     [CSR_SPMPCFG0]    = { "spmpcfg0",   spmp, read_spmpcfg,  write_spmpcfg  },
     [CSR_SPMPCFG1]    = { "spmpcfg1",   spmp, read_spmpcfg,  write_spmpcfg  },
     [CSR_SPMPCFG2]    = { "spmpcfg2",   spmp, read_spmpcfg,  write_spmpcfg  },

@@ -22,6 +22,8 @@
 #ifndef RISCV_SPMP_H
 #define RISCV_SPMP_H
 
+#define SSECCFG_SMAA_MASK 0x1
+
 typedef enum {
     SPMP_READ  = 1 << 0,
     SPMP_WRITE = 1 << 1,
@@ -66,5 +68,7 @@ void spmp_update_rule_addr(CPURISCVState *env, uint32_t spmp_index);
 void spmp_update_rule_nums(CPURISCVState *env);
 uint32_t spmp_get_num_rules(CPURISCVState *env);
 int spmp_priv_to_page_prot(spmp_priv_t spmp_priv);
+target_ulong sseccfg_csr_read(CPURISCVState *env);
+void sseccfg_csr_write(CPURISCVState *env, target_ulong val);
 
 #endif

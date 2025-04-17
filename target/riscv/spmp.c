@@ -216,11 +216,16 @@ static bool spmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
 {
     bool ret;
 
-    if ((!riscv_cpu_cfg(env)->spmp) || (mode != PRV_U)) {
+    qemu_log_mask(CPU_LOG_SPMP,
+                            "Mode=" HWADDR_FMT_plx " SSECCFG=" HWADDR_FMT_plx " \n",
+                            mode, env->sseccfg);
+
+    if ((!riscv_cpu_cfg(env)->spmp) || (mode == PRV_S && !(env->sseccfg & SSECCFG_SMAA_MASK)) || (mode == PRV_M)) {
         /*
          * The SPMP proposal states three circumstances that the access is allowed:
          * 1. The HW does not implement any SPMP entry.
-         * 2. The HW implements SPMP, but no SPMP entry matches S-Mode access.
+         * 2. If the effective privilege mode of the access is S and no SPMP entry matches, if sseccfg.SMAA is
+         *    clear the access is allowed, otherwise if sseccfg.SMAA is set, the access is denied;
          * 3. The access mode is M.
          */
         ret = true;
@@ -230,6 +235,8 @@ static bool spmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
          * U-mode is not allowed to succeed if they don't match a rule,
          * but there are rules. We've checked for no rule earlier in this
          * function.
+         * 
+         * and privilege mode of the access is S with sseccfg.SMAA set to 1.
          */
         ret = false;
         *allowed_privs = 0;
@@ -534,3 +541,18 @@ int spmp_priv_to_page_prot(spmp_priv_t spmp_priv)
     return prot;
 }
 
+/*
+ * Handle a write to a sseccfg CSR
+ */
+void sseccfg_csr_write(CPURISCVState *env, target_ulong val)
+{
+    env->sseccfg = val;
+}
+
+/*
+ * Handle a read from a sseccfg CSR
+ */
+target_ulong sseccfg_csr_read(CPURISCVState *env)
+{
+    return env->sseccfg;
+}
