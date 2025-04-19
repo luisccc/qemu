@@ -113,17 +113,9 @@ static void spmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea
        0111...1111   2^(XLEN+2)-byte NAPOT range
        1111...1111   Reserved
     */
-    if (a == -1) {
-        *sa = 0u;
-        *ea = -1;
-        return;
-    } else {
-        target_ulong t1 = ctz64(~a);
-        target_ulong base = (a & ~(((target_ulong)1 << t1) - 1)) << 2;
-        target_ulong range = ((target_ulong)1 << (t1 + 3)) - 1;
-        *sa = base;
-        *ea = base + range;
-    }
+    a = (a << 2) | 0x3;
+    *sa = a & (a + 1);
+    *ea = a | (a + 1);
 }
 
 void spmp_update_rule_addr(CPURISCVState *env, uint32_t spmp_index)
@@ -343,6 +335,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 14:
                     *allowed_privs = SPMP_READ | SPMP_WRITE;
                     break;
+                case 15:
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
                     *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
@@ -356,7 +349,6 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 case 12:
-                case 15:
                     *allowed_privs = SPMP_READ;
                     break;
                 default:
@@ -378,9 +370,9 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 4:
                 case 5:
                 case 12:
-                case 15:
                     *allowed_privs = SPMP_READ;
                     break;
+                case 15:
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
                     *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
@@ -405,6 +397,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 12:
                 case 13:
                 case 14:
+                case 15:
                     *allowed_privs = 0;
                     break;
                 case 1:
@@ -414,7 +407,6 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     break;
                 case 2:
                 case 4:
-                case 15:
                     *allowed_privs = SPMP_READ;
                     break;
                 case 3:
