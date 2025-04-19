@@ -1897,7 +1897,6 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     hwaddr pa = 0;
     int prot, prot2, prot_pmp, prot_spmp;
     bool pmp_violation = false;
-    // bool spmp_violation = false;
     bool first_stage_error = true;
     bool two_stage_lookup = mmuidx_2stage(mmu_idx);
     bool two_stage_indirect_error = false;
@@ -2004,14 +2003,13 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                 ret = get_physical_address_spmp(env, &prot_spmp, pa,
                                                 size, access_type, mode);
 
-                qemu_log_mask(CPU_LOG_SPMP,
+                qemu_log_mask(CPU_LOG_MMU,
                             "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
                             __func__, pa, ret, prot_spmp);
 
                 prot &= prot_spmp;
 
                 if (ret == TRANSLATE_SPMP_FAIL) {
-                    // spmp_violation = true;
                     qemu_log_mask(CPU_LOG_SPMP,
                             "SPMP Check failed\n");
                 }

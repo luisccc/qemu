@@ -5277,6 +5277,47 @@ static RISCVException write_sseccfg(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException rmw_spmpswitch64(CPURISCVState *env, int csrno,
+                                    uint64_t *ret_val,
+                                    uint64_t new_val, uint64_t wr_mask)
+{
+    uint64_t new_spmpswitch = (env->spmpswitch & ~wr_mask) | (new_val & wr_mask);
+    env->spmpswitch = new_spmpswitch;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_spmpswitch(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+    ret = rmw_spmpswitch64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_spmpswitchh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+
+    ret = rmw_spmpswitch64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
+}
+
 static bool check_spmp_reg_index(CPURISCVState *env, uint32_t reg_index)
 {
     if ((reg_index & 1) && (riscv_cpu_mxl(env) == MXL_RV64)) {
@@ -6177,6 +6218,10 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
         /* S-mode Physical Memory Protection */
     [CSR_SPMPCFG0]    = { "sseccfg",    spmp, read_sseccfg,  write_sseccfg  },
+    [CSR_SPMPSWITCH]  = { "spmpswitch", spmp, NULL, NULL, rmw_spmpswitch },
+    [CSR_SPMPSWITCHH] = { "spmpswitchh", spmp, NULL, NULL, rmw_spmpswitchh },
+
+
     [CSR_SPMPCFG0]    = { "spmpcfg0",   spmp, read_spmpcfg,  write_spmpcfg  },
     [CSR_SPMPCFG1]    = { "spmpcfg1",   spmp, read_spmpcfg,  write_spmpcfg  },
     [CSR_SPMPCFG2]    = { "spmpcfg2",   spmp, read_spmpcfg,  write_spmpcfg  },

@@ -207,6 +207,14 @@ static int spmp_is_in_range(CPURISCVState *env, int spmp_index, target_ulong add
     return result;
 }
 
+static bool spmp_get_spmpswitch_bit(CPURISCVState *env, int spmp_index)
+{
+    bool result = false;
+    result = (env->spmpswitch >> spmp_index) & 0x1;
+
+    return result;
+}
+
 /*
  * Check if the address has required RWX privs when no SPMP entry is matched.
  */
@@ -215,10 +223,6 @@ static bool spmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
     target_ulong mode)
 {
     bool ret;
-
-    qemu_log_mask(CPU_LOG_SPMP,
-                            "Mode=" HWADDR_FMT_plx " SSECCFG=" HWADDR_FMT_plx " \n",
-                            mode, env->sseccfg);
 
     if ((!riscv_cpu_cfg(env)->spmp) || (mode == PRV_S && !(env->sseccfg & SSECCFG_SMAA_MASK)) || (mode == PRV_M)) {
         /*
@@ -262,6 +266,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     int spmp_size = 0;
     target_ulong s = 0;
     target_ulong e = 0;
+    bool spmpswitch_en = false;
 
 	/* Short cut for M-mode access*/
     if (mode == PRV_M) {
@@ -294,6 +299,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     for (i = 0; i < MAX_RISCV_SPMPS; i++) {
         s = spmp_is_in_range(env, i, addr);
         e = spmp_is_in_range(env, i, addr + spmp_size - 1);
+        spmpswitch_en = spmp_get_spmpswitch_bit(env, i);
 
         /* partially inside */
         if ((s + e) == 1) {
@@ -317,9 +323,9 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
             (env->spmp_state.spmp[i].cfg_reg & SPMP_WRITE) |
             ((env->spmp_state.spmp[i].cfg_reg & SPMP_EXEC) >> 2);
 
-        if (((s + e) == 2) && (SPMP_AMATCH_OFF != a_field)) {
+        if (((s + e) == 2) && (SPMP_AMATCH_OFF != a_field) && spmpswitch_en) {
             /*
-             * If the SPMP entry is not off and the address is in range,
+             * If the SPMP entry is not off, spmpswitch bit is set, and the address is in range,
              * do the priv check
              */
             if ((mode == PRV_S) && !sum_is_set(env)) {

@@ -390,6 +390,8 @@
 #define CSR_PMPADDR15       0x3bf
 
 /* S-mode Physical Memory Protection (SPMP) */
+#define CSR_SPMPSWITCH       0x19d
+#define CSR_SPMPSWITCHH      0x19e
 #define CSR_SSECCFG          0x19f
 
 #define CSR_SPMPCFG0         0x1a0
