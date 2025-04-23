@@ -6217,7 +6217,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
 
         /* S-mode Physical Memory Protection */
-    [CSR_SPMPCFG0]    = { "sseccfg",    spmp, read_sseccfg,  write_sseccfg  },
+    [CSR_SSECCFG]     = { "sseccfg",    spmp, read_sseccfg,  write_sseccfg  },
     [CSR_SPMPSWITCH]  = { "spmpswitch", spmp, NULL, NULL, rmw_spmpswitch },
     [CSR_SPMPSWITCHH] = { "spmpswitchh", spmp, NULL, NULL, rmw_spmpswitchh },
 
