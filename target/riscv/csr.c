@@ -2449,6 +2449,11 @@ static bool xiselect_ctr_range(int csrno, target_ulong isel)
            csrno < CSR_MIREG;
 }
 
+static bool xiselect_spmp_range(target_ulong isel)
+{
+    return (ISELECT_SPMP_FIRST <= isel && isel <= ISELECT_SPMP_LAST);
+}
+
 static int rmw_iprio(target_ulong xlen,
                      target_ulong iselect, uint8_t *iprio,
                      target_ulong *val, target_ulong new_val,
@@ -2785,6 +2790,9 @@ static int rmw_xireg_ctr(CPURISCVState *env, int csrno,
     return 0;
 }
 
+static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask);
 /*
  * rmw_xireg_csrind: Perform indirect access to xireg and xireg2-xireg6
  *
@@ -2803,6 +2811,12 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
         ret = rmw_xireg_cd(env, csrno, isel, val, new_val, wr_mask);
     } else if (xiselect_ctr_range(csrno, isel)) {
         ret = rmw_xireg_ctr(env, csrno, isel, val, new_val, wr_mask);
+    } else if (xiselect_spmp_range(isel)) {
+        ret = spmp(env, csrno); // Is SPMP enabled?
+        if(ret)
+            return ret;
+        
+        ret = rmw_xireg_spmp(env, csrno, isel, val, new_val, wr_mask);
     } else {
         /*
          * As per the specification, access to unimplented region is undefined
@@ -5282,6 +5296,11 @@ static RISCVException rmw_spmpswitch64(CPURISCVState *env, int csrno,
                                     uint64_t new_val, uint64_t wr_mask)
 {
     uint64_t new_spmpswitch = (env->spmpswitch & ~wr_mask) | (new_val & wr_mask);
+    
+    if (ret_val) {
+        *ret_val = env->spmpswitch;
+    }
+    
     env->spmpswitch = new_spmpswitch;
 
     return RISCV_EXCP_NONE;
@@ -5362,6 +5381,48 @@ static RISCVException write_spmpaddr(CPURISCVState *env, int csrno,
 {
     spmpaddr_csr_write(env, csrno - CSR_SPMPADDR0, val);
     return RISCV_EXCP_NONE;
+}
+
+static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask)
+{
+    int actual_csrno = csrno, ret = RISCV_EXCP_NONE;
+
+    if (csrno > CSR_SIREG3)
+        actual_csrno = csrno - 1; // From here the it jumps a number, so to ease the calculations later, subtract here
+
+    if(isel <= ISELECT_SPMP_3 && isel >= ISELECT_SPMP_1) {
+        actual_csrno = (actual_csrno - CSR_SIREG + CSR_SPMPCFG0) + ((isel - ISELECT_SPMP_1) * 6);
+        if(val) {
+            ret = read_spmpcfg(env, actual_csrno, val);
+            if(ret)
+                return ret;
+        }
+        
+        ret = write_spmpcfg(env, actual_csrno, new_val);
+    }
+    else if(isel <= ISELECT_SPMP_14 && isel >= ISELECT_SPMP_4) {
+        actual_csrno = (actual_csrno - CSR_SIREG + CSR_SPMPADDR0) + ((isel - ISELECT_SPMP_4) * 6);
+        if(val) {
+            ret = read_spmpaddr(env, actual_csrno, val);
+            if(ret)
+                return ret;
+        }
+        
+        ret = write_spmpaddr(env, actual_csrno, new_val & wr_mask);
+    } else if (isel == ISELECT_SPMP_15) {
+        if (csrno == CSR_SIREG)
+            ret = rmw_spmpswitch(env, CSR_SPMPSWITCH, val, new_val, wr_mask);
+        else if (csrno == CSR_SIREG2)
+            ret = rmw_spmpswitchh(env, CSR_SPMPSWITCHH, val, new_val, wr_mask);
+        else
+            ret = RISCV_EXCP_ILLEGAL_INST;
+    } else {
+        ret = RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return ret;
 }
 
 static RISCVException read_tselect(CPURISCVState *env, int csrno,

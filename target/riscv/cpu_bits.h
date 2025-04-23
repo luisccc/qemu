@@ -390,10 +390,6 @@
 #define CSR_PMPADDR15       0x3bf
 
 /* S-mode Physical Memory Protection (SPMP) */
-#define CSR_SPMPSWITCH       0x19d
-#define CSR_SPMPSWITCHH      0x19e
-#define CSR_SSECCFG          0x19f
-
 #define CSR_SPMPCFG0         0x1a0
 #define CSR_SPMPCFG1         0x1a1
 #define CSR_SPMPCFG2         0x1a2
@@ -474,6 +470,10 @@
 #define CSR_SPMPADDR61       0x1ed
 #define CSR_SPMPADDR62       0x1ee
 #define CSR_SPMPADDR63       0x1ef
+
+#define CSR_SPMPSWITCH       0x1F0
+#define CSR_SPMPSWITCHH      0x1F1
+#define CSR_SSECCFG          0x1F2
 
 /* RNMI */
 #define CSR_MNSCRATCH       0x740
@@ -1073,6 +1073,25 @@ typedef enum CTRType {
 #define ISELECT_CD_FIRST                   0x40
 #define ISELECT_CD_LAST                    0x5f
 #define ISELECT_MASK_SXCSRIND              0xfff
+
+/* SPMP Values for Indirect CSR Access Extension */
+#define ISELECT_SPMP_FIRST                 0x100
+#define ISELECT_SPMP_LAST                  0x10E
+#define ISELECT_SPMP_1                     0x100
+#define ISELECT_SPMP_2                     0x101
+#define ISELECT_SPMP_3                     0x102
+#define ISELECT_SPMP_4                     0x103
+#define ISELECT_SPMP_5                     0x104
+#define ISELECT_SPMP_6                     0x105
+#define ISELECT_SPMP_7                     0x106
+#define ISELECT_SPMP_8                     0x107    
+#define ISELECT_SPMP_9                     0x108
+#define ISELECT_SPMP_10                    0x109
+#define ISELECT_SPMP_11                    0x10A
+#define ISELECT_SPMP_12                    0x10B
+#define ISELECT_SPMP_13                    0x10C
+#define ISELECT_SPMP_14                    0x10D
+#define ISELECT_SPMP_15                    0x10E
 
 /* Dummy [M|S|VS]ISELECT value for emulating [M|S|VS]TOPEI CSRs */
 #define ISELECT_IMSIC_TOPEI                (ISELECT_MASK_AIA + 1)
