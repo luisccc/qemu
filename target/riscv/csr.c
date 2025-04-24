@@ -2813,9 +2813,12 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
         ret = rmw_xireg_ctr(env, csrno, isel, val, new_val, wr_mask);
     } else if (xiselect_spmp_range(isel)) {
         ret = spmp(env, csrno); // Is SPMP enabled?
-        if(ret)
+        if (ret != RISCV_EXCP_NONE) {
+            qemu_log_mask(CPU_LOG_SPMP,
+                      "SPMP is not enabled\n");
             return ret;
-        
+        }
+
         ret = rmw_xireg_spmp(env, csrno, isel, val, new_val, wr_mask);
     } else {
         /*
@@ -5387,31 +5390,28 @@ static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask)
 {
-    int actual_csrno = csrno, ret = RISCV_EXCP_NONE;
+    int actual_csrno = 0, ret = RISCV_EXCP_NONE;
 
-    if (csrno > CSR_SIREG3)
-        actual_csrno = csrno - 1; // From here the it jumps a number, so to ease the calculations later, subtract here
-
-    if(isel <= ISELECT_SPMP_3 && isel >= ISELECT_SPMP_1) {
-        actual_csrno = (actual_csrno - CSR_SIREG + CSR_SPMPCFG0) + ((isel - ISELECT_SPMP_1) * 6);
+    if(isel <= ISELECT_SPMP_16 && isel >= ISELECT_SPMP_1 && csrno == CSR_SIREG) {
+        actual_csrno = (isel - ISELECT_SPMP_1) + CSR_SPMPCFG0;
         if(val) {
             ret = read_spmpcfg(env, actual_csrno, val);
-            if(ret)
+            if (ret != RISCV_EXCP_NONE)
                 return ret;
         }
         
         ret = write_spmpcfg(env, actual_csrno, new_val);
     }
-    else if(isel <= ISELECT_SPMP_14 && isel >= ISELECT_SPMP_4) {
-        actual_csrno = (actual_csrno - CSR_SIREG + CSR_SPMPADDR0) + ((isel - ISELECT_SPMP_4) * 6);
+    else if(isel >= ISELECT_SPMP_17 && isel <= ISELECT_SPMP_80 && csrno == CSR_SIREG) {
+        actual_csrno = (isel - ISELECT_SPMP_17) + CSR_SPMPADDR0;
         if(val) {
             ret = read_spmpaddr(env, actual_csrno, val);
-            if(ret)
+            if (ret != RISCV_EXCP_NONE)
                 return ret;
         }
         
         ret = write_spmpaddr(env, actual_csrno, new_val & wr_mask);
-    } else if (isel == ISELECT_SPMP_15) {
+    } else if (isel == ISELECT_SPMP_81 && (csrno == CSR_SIREG || csrno == CSR_SIREG2)) {
         if (csrno == CSR_SIREG)
             ret = rmw_spmpswitch(env, CSR_SPMPSWITCH, val, new_val, wr_mask);
         else if (csrno == CSR_SIREG2)

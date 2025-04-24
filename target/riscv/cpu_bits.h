@@ -1076,22 +1076,13 @@ typedef enum CTRType {
 
 /* SPMP Values for Indirect CSR Access Extension */
 #define ISELECT_SPMP_FIRST                 0x100
-#define ISELECT_SPMP_LAST                  0x10E
+#define ISELECT_SPMP_LAST                  0x150
 #define ISELECT_SPMP_1                     0x100
-#define ISELECT_SPMP_2                     0x101
-#define ISELECT_SPMP_3                     0x102
-#define ISELECT_SPMP_4                     0x103
-#define ISELECT_SPMP_5                     0x104
-#define ISELECT_SPMP_6                     0x105
-#define ISELECT_SPMP_7                     0x106
-#define ISELECT_SPMP_8                     0x107    
-#define ISELECT_SPMP_9                     0x108
-#define ISELECT_SPMP_10                    0x109
-#define ISELECT_SPMP_11                    0x10A
-#define ISELECT_SPMP_12                    0x10B
-#define ISELECT_SPMP_13                    0x10C
-#define ISELECT_SPMP_14                    0x10D
-#define ISELECT_SPMP_15                    0x10E
+#define ISELECT_SPMP_16                    0x10F
+#define ISELECT_SPMP_17                    0x110
+#define ISELECT_SPMP_80                    0x14F
+#define ISELECT_SPMP_81                    0x150
+
 
 /* Dummy [M|S|VS]ISELECT value for emulating [M|S|VS]TOPEI CSRs */
 #define ISELECT_IMSIC_TOPEI                (ISELECT_MASK_AIA + 1)
