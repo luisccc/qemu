@@ -341,9 +341,9 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
                     break;
                 case 9:
-                case 10:
                     *allowed_privs = SPMP_EXEC;
                     break;
+                case 10:
                 case 11:
                 case 13:
                     *allowed_privs = SPMP_READ | SPMP_EXEC;
@@ -378,9 +378,9 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
                     break;
                 case 9:
-                case 10:
                     *allowed_privs = SPMP_EXEC;
                     break;
+                case 10:
                 case 11:
                 case 13:
                     *allowed_privs = SPMP_READ | SPMP_EXEC;
@@ -402,7 +402,6 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     break;
                 case 1:
                 case 10:
-                case 11:
                     *allowed_privs = SPMP_EXEC;
                     break;
                 case 2:
@@ -414,6 +413,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     *allowed_privs = SPMP_READ | SPMP_WRITE;
                     break;
                 case 5:
+                case 11:
                     *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 case 7:
