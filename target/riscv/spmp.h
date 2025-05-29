@@ -60,7 +60,10 @@ target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index);
 
 void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val);
+void spmpcfg_csr_partial_write(CPURISCVState *env, uint32_t reg_index,
+    target_ulong val);
 target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index);
+target_ulong spmpcfg_csr_partial_read(CPURISCVState *env, uint32_t reg_index);
 bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,
     target_ulong mode);

@@ -95,9 +95,11 @@ static void spmp_write_cfg(CPURISCVState *env, uint32_t spmp_index, uint8_t val)
     if (spmp_index < MAX_RISCV_SPMPS) {
         env->spmp_state.spmp[spmp_index].cfg_reg = val;
         spmp_update_rule(env, spmp_index);
+        qemu_log_mask(CPU_LOG_SPMP,
+                      "%s: new config: %x in entry: %d\n", __func__, val, spmp_index);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                    "ignoring spmpcfg write - out of bounds\n");
+                    "%s: ignoring spmpcfg write - out of bounds\n", __func__);
     }
 }
 
@@ -158,6 +160,8 @@ void spmp_update_rule_addr(CPURISCVState *env, uint32_t spmp_index)
 
     env->spmp_state.addr[spmp_index].sa = sa;
     env->spmp_state.addr[spmp_index].ea = ea;
+    qemu_log_mask(CPU_LOG_SPMP,
+                      "%s: Entry %d - start_addr: " HWADDR_FMT_plx ", end_addr: " HWADDR_FMT_plx "\n", __func__, spmp_index, sa, ea);
 }
 
 void spmp_update_rule_nums(CPURISCVState *env)
@@ -296,7 +300,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
         /* partially inside */
         if ((s + e) == 1) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "spmp violation - access is partially inside\n");
+                          "%s: spmp violation - access is partially inside\n", __func__);
             ret = 0;
             break;
         }
@@ -462,6 +466,22 @@ void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
 #endif
 }
 
+/*
+ * Handle a partial write to a spmpcfg CSR
+ */
+void spmpcfg_csr_partial_write(CPURISCVState *env, uint32_t reg_index,
+    target_ulong val)
+{
+    spmp_write_cfg(env, reg_index, val);
+
+    /* If SPMP permission of any addr has been changed, and the HW enables MMU, flush TLB pages. */
+#if 0
+    if (riscv_cpu_cfg(env)->mmu) {
+        tlb_flush(env_cpu(env));
+    }
+#endif
+}
+
 
 /*
  * Handle a read from a spmpcfg CSR
@@ -483,6 +503,14 @@ target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
     return cfg_val;
 }
 
+/*
+ * Handle a partial read to a spmpcfg CSR
+ */
+target_ulong spmpcfg_csr_partial_read(CPURISCVState *env, uint32_t reg_index)
+{
+    return (target_ulong)spmp_read_cfg(env, reg_index);
+
+}
 
 /*
  * Handle a write to a spmpaddr CSR
@@ -490,14 +518,12 @@ target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
 void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val)
 {
-    // trace_spmpaddr_csr_write(env->mhartid, addr_index, val);
-
     if (addr_index < MAX_RISCV_SPMPS) {
         env->spmp_state.spmp[addr_index].addr_reg = val;
         spmp_update_rule(env, addr_index);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring spmpaddr write - out of bounds\n");
+                      "%s: ignoring spmpaddr write - out of bounds\n", __func__);
     }
 }
 
@@ -513,7 +539,7 @@ target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
         // trace_spmpaddr_csr_read(env->mhartid, addr_index, val);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring spmpaddr read - out of bounds\n");
+                      "%s: ignoring spmpaddr read - out of bounds\n", __func__);
     }
 
     return val;

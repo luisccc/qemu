@@ -471,8 +471,8 @@
 #define CSR_SPMPADDR62       0x1ee
 #define CSR_SPMPADDR63       0x1ef
 
-#define CSR_SPMPSWITCH       0x1F0
-#define CSR_SPMPSWITCHH      0x1F1
+#define CSR_SPMPSWITCH       0x550
+#define CSR_SPMPSWITCHH      0x551
 #define CSR_SSECCFG          0x1F2
 
 /* RNMI */
@@ -1075,14 +1075,7 @@ typedef enum CTRType {
 #define ISELECT_MASK_SXCSRIND              0xfff
 
 /* SPMP Values for Indirect CSR Access Extension */
-#define ISELECT_SPMP_FIRST                 0x100
-#define ISELECT_SPMP_LAST                  0x150
-#define ISELECT_SPMP_1                     0x100
-#define ISELECT_SPMP_16                    0x10F
-#define ISELECT_SPMP_17                    0x110
-#define ISELECT_SPMP_80                    0x14F
-#define ISELECT_SPMP_81                    0x150
-
+#define ISELECT_SPMP_BASE                  0x100
 
 /* Dummy [M|S|VS]ISELECT value for emulating [M|S|VS]TOPEI CSRs */
 #define ISELECT_IMSIC_TOPEI                (ISELECT_MASK_AIA + 1)

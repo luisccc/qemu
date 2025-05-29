@@ -2395,7 +2395,7 @@ static RISCVException rmw_xiselect(CPURISCVState *env, int csrno,
     if (ret != RISCV_EXCP_NONE) {
         return ret;
     }
-
+    
     /* Translate CSR number for VS-mode */
     csrno = csrind_xlate_vs_csrno(env, csrno);
 
@@ -2451,7 +2451,7 @@ static bool xiselect_ctr_range(int csrno, target_ulong isel)
 
 static bool xiselect_spmp_range(target_ulong isel)
 {
-    return (ISELECT_SPMP_FIRST <= isel && isel <= ISELECT_SPMP_LAST);
+    return (ISELECT_SPMP_BASE <= isel && isel <= ISELECT_SPMP_BASE + MAX_RISCV_SPMPS);
 }
 
 static int rmw_iprio(target_ulong xlen,
@@ -5390,39 +5390,29 @@ static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask)
 {
-    int actual_csrno = 0, ret = RISCV_EXCP_NONE;
+    int index = 0;
 
-    if(isel <= ISELECT_SPMP_16 && isel >= ISELECT_SPMP_1 && csrno == CSR_SIREG) {
-        actual_csrno = (isel - ISELECT_SPMP_1) + CSR_SPMPCFG0;
+    if (csrno == CSR_SIREG) {  // addr
+        index = (isel - ISELECT_SPMP_BASE);
+        
         if(val) {
-            ret = read_spmpcfg(env, actual_csrno, val);
-            if (ret != RISCV_EXCP_NONE)
-                return ret;
+            *val = spmpaddr_csr_read(env, index);
         }
         
-        ret = write_spmpcfg(env, actual_csrno, new_val);
+        spmpaddr_csr_write(env, index, new_val & wr_mask);
     }
-    else if(isel >= ISELECT_SPMP_17 && isel <= ISELECT_SPMP_80 && csrno == CSR_SIREG) {
-        actual_csrno = (isel - ISELECT_SPMP_17) + CSR_SPMPADDR0;
+    else if (csrno == CSR_SIREG2){ // cfg
+        index  = (isel - ISELECT_SPMP_BASE);
         if(val) {
-            ret = read_spmpaddr(env, actual_csrno, val);
-            if (ret != RISCV_EXCP_NONE)
-                return ret;
+            *val = spmpcfg_csr_partial_read(env, index);
         }
         
-        ret = write_spmpaddr(env, actual_csrno, new_val & wr_mask);
-    } else if (isel == ISELECT_SPMP_81 && (csrno == CSR_SIREG || csrno == CSR_SIREG2)) {
-        if (csrno == CSR_SIREG)
-            ret = rmw_spmpswitch(env, CSR_SPMPSWITCH, val, new_val, wr_mask);
-        else if (csrno == CSR_SIREG2)
-            ret = rmw_spmpswitchh(env, CSR_SPMPSWITCHH, val, new_val, wr_mask);
-        else
-            ret = RISCV_EXCP_ILLEGAL_INST;
-    } else {
-        ret = RISCV_EXCP_ILLEGAL_INST;
-    }
+        spmpcfg_csr_partial_write(env, index, new_val & wr_mask);
+    } 
+    else
+        return RISCV_EXCP_ILLEGAL_INST;
 
-    return ret;
+    return 0;
 }
 
 static RISCVException read_tselect(CPURISCVState *env, int csrno,
