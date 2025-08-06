@@ -163,8 +163,9 @@ extern RISCVCPUImpliedExtsRule *riscv_multi_ext_implied_rules[];
 
 #define MMU_USER_IDX 3
 
-#define MAX_RISCV_PMPS (16)
+#define MAX_RISCV_PMPS (64)
 #define MAX_RISCV_SPMPS (64)
+#define MPMP_DELEG_DEFAULT (64)
 
 #if !defined(CONFIG_USER_ONLY)
 #include "pmp.h"
@@ -438,7 +439,7 @@ struct CPUArchState {
     target_ulong mseccfg;
     
     /* S-mode Physical Memory Protection */
-    target_ulong sseccfg;
+    uint16_t     mpmpdeleg;
     uint64_t     spmpswitch;
     spmp_table_t spmp_state;
 

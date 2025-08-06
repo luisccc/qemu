@@ -336,7 +336,12 @@ bool pmp_hart_has_privs(CPURISCVState *env, hwaddr addr,
      * 1.10 draft priv spec states there is an implicit order
      * from low to high
      */
-    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+
+    // If SPMP is enabled, use the MPMP delegation
+    uint8_t max_pmp_index =
+        (riscv_cpu_cfg(env)->spmp) ? (env->mpmpdeleg & 0x7F) : MAX_RISCV_PMPS;
+
+    for (i = 0; i < max_pmp_index; i++) {
         s = pmp_is_in_range(env, i, addr);
         e = pmp_is_in_range(env, i, addr + pmp_size - 1);
 

@@ -19,16 +19,23 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * Heavily modified to adhere to new versions of the specification
+ *      Author: Luís Cunha, luisccunha8@gmail.com
+ */
+
 #ifndef RISCV_SPMP_H
 #define RISCV_SPMP_H
 
-#define SSECCFG_SMAA_MASK 0x1
 
 typedef enum {
-    SPMP_READ  = 1 << 0,
-    SPMP_WRITE = 1 << 1,
-    SPMP_EXEC  = 1 << 2,
-    SPMP_SMODE = 1 << 7
+    SPMP_READ   = (1 << 0),
+    SPMP_WRITE  = (1 << 1),
+    SPMP_EXEC   = (1 << 2),
+    SPMP_AMATCH = (3 << 3),
+    SPMP_LOCK   = (1 << 7),
+    SPMP_UMODE  = (1 << 8),
+    SPMP_SHARED = (1 << 9)
 } spmp_priv_t;
 
 typedef enum {
@@ -40,7 +47,7 @@ typedef enum {
 
 typedef struct {
     target_ulong addr_reg;
-    uint8_t  cfg_reg;
+    uint16_t  cfg_reg;
 } spmp_entry_t;
 
 typedef struct {
@@ -55,23 +62,20 @@ typedef struct {
 } spmp_table_t;
 
 void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
-    target_ulong val);
+    target_ulong val, bool m_mode_access);
 target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index);
 
-void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
-    target_ulong val);
-void spmpcfg_csr_partial_write(CPURISCVState *env, uint32_t reg_index,
-    target_ulong val);
 target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index);
-target_ulong spmpcfg_csr_partial_read(CPURISCVState *env, uint32_t reg_index);
+void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
+    target_ulong val, bool m_mode_access);
+
 bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,
     target_ulong mode);
-void spmp_update_rule_addr(CPURISCVState *env, uint32_t spmp_index);
-void spmp_update_rule_nums(CPURISCVState *env);
-uint32_t spmp_get_num_rules(CPURISCVState *env);
 int spmp_priv_to_page_prot(spmp_priv_t spmp_priv);
-target_ulong sseccfg_csr_read(CPURISCVState *env);
-void sseccfg_csr_write(CPURISCVState *env, target_ulong val);
+void spmp_unlock_entries(CPURISCVState *env);
+
+void spmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea);
+uint8_t spmp_get_a_field(uint8_t cfg);
 
 #endif

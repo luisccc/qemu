@@ -2015,7 +2015,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                 vm = get_field(env->satp, SATP64_MODE);
             }
 
-            if (vm == VM_1_10_MBARE) {
+            if (vm == VM_1_10_MBARE && riscv_cpu_cfg(env)->spmp) {
                 /* S-mode Physical Memory Protection check */
                 ret = get_physical_address_spmp(env, &prot_spmp, pa,
                                                 size, access_type, mode);
@@ -2028,7 +2028,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 
                 if (ret == TRANSLATE_SPMP_FAIL) {
                     qemu_log_mask(CPU_LOG_SPMP,
-                            "SPMP Check failed\n");
+                            "SPMP Check failed with SPMP address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", pa, access_type, mode);
                     spmp_violation = true;
                 }
             }
