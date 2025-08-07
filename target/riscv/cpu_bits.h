@@ -327,6 +327,9 @@
 #define CSR_VSTOPEI         0x25c
 #define CSR_VSTOPI          0xeb0
 
+#define CSR_VSPMPSWITCH     0x25d
+#define CSR_VSPMPSWITCHH    0x25e
+
 /* Hypervisor and VS-Level High-Half CSRs (H-extension with AIA) */
 #define CSR_HIDELEGH        0x613
 #define CSR_HVIENH          0x618
@@ -996,6 +999,8 @@ typedef enum CTRType {
 
 /* SPMP Values for Indirect CSR Access Extension */
 #define ISELECT_SPMP_BASE                  0x100
+/* VSPMP Values for Indirect CSR Access Extension */
+#define ISELECT_VSPMP_BASE                 0x140
 
 /* Dummy [M|S|VS]ISELECT value for emulating [M|S|VS]TOPEI CSRs */
 #define ISELECT_IMSIC_TOPEI                (ISELECT_MASK_AIA + 1)

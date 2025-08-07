@@ -36,6 +36,7 @@
 #include "debug.h"
 #include "pmp.h"
 #include "spmp.h"
+#include "vspmp.h"
 
 int riscv_env_mmu_index(CPURISCVState *env, bool ifetch)
 {
@@ -1245,6 +1246,41 @@ static int get_physical_address_spmp(CPURISCVState *env, int *prot, hwaddr addr,
     return TRANSLATE_SUCCESS;
 }
 
+/*
+ * get_physical_address_vspmp - check VSPMP permission for this physical address
+ *
+ * Match the VSPMP region and check permission for this physical address.
+ * Returns 0 if the permission checking was successful.
+ * The VSPMP check happens before the SPMP check.
+ *
+ * @env: CPURISCVState
+ * @prot: The returned protection attributes
+ * @addr: The physical address to be checked permission
+ * @access_type: The type of access
+ * @mode: Indicates current privilege level.
+ */
+static int get_physical_address_vspmp(CPURISCVState *env, int *prot, hwaddr addr,
+                                    int size, int access_type,
+                                    int mode)
+{
+    spmp_priv_t vspmp_priv;
+
+    if (!riscv_cpu_cfg(env)->vspmp) {
+        *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        return TRANSLATE_SUCCESS;
+    }
+
+    if (!vspmp_hart_has_privs(env, addr, size, 1 << access_type, &vspmp_priv,
+                            mode)) {
+        *prot = 0;
+        return TRANSLATE_SPMP_FAIL;
+    }
+
+    *prot = spmp_priv_to_page_prot(vspmp_priv);
+
+    return TRANSLATE_SUCCESS;
+}
+
 /* Returns 'true' if a svukte address check is needed */
 static bool do_svukte_check(CPURISCVState *env, bool first_stage,
                              int mode, bool virt)
@@ -1911,7 +1947,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     CPURISCVState *env = &cpu->env;
     vaddr im_address;
     hwaddr pa = 0;
-    int prot, prot2, prot_pmp, prot_spmp;
+    int prot, prot2, prot_pmp, prot_spmp, prot_vspmp;
     bool pmp_violation = false;
     bool spmp_violation = false;
     bool first_stage_error = true;
@@ -2016,20 +2052,42 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             }
 
             if (vm == VM_1_10_MBARE && riscv_cpu_cfg(env)->spmp) {
-                /* S-mode Physical Memory Protection check */
-                ret = get_physical_address_spmp(env, &prot_spmp, pa,
+                if(riscv_cpu_cfg(env)->vspmp) {
+                    /* Virtual S-mode Physical Memory Protection check */
+                    ret = get_physical_address_vspmp(env, &prot_vspmp, pa,
                                                 size, access_type, mode);
+                    
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s VSPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
+                                __func__, pa, ret, prot_vspmp);
 
-                qemu_log_mask(CPU_LOG_MMU,
-                            "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
-                            __func__, pa, ret, prot_spmp);
+                    prot &= prot_vspmp;
+                }
 
-                prot &= prot_spmp;
-
+                // If VSPMP fails, there is no need to continue with SPMP check
+                // As per spec, it is reported the same as a fail from the normal SPMP
                 if (ret == TRANSLATE_SPMP_FAIL) {
                     qemu_log_mask(CPU_LOG_SPMP,
+                            "VSPMP Check failed with address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", 
+                                pa, access_type, mode);
+                    spmp_violation = true;
+                }
+                else {
+                    /* S-mode Physical Memory Protection check */
+                    ret = get_physical_address_spmp(env, &prot_spmp, pa,
+                                                    size, access_type, mode);
+
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
+                                __func__, pa, ret, prot_spmp);
+
+                    prot &= prot_spmp;
+
+                    if (ret == TRANSLATE_SPMP_FAIL) {
+                        qemu_log_mask(CPU_LOG_SPMP,
                             "SPMP Check failed with SPMP address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", pa, access_type, mode);
                     spmp_violation = true;
+                    }
                 }
             }
 

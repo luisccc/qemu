@@ -761,6 +761,16 @@ static RISCVException spmp(CPURISCVState *env, int csrno)
     return smode(env, csrno);
 }
 
+static RISCVException vspmp(CPURISCVState *env, int csrno)
+{
+    if (riscv_cpu_cfg(env)->vspmp) {
+        return RISCV_EXCP_NONE;
+    }
+
+    // VSPMP can only exist, if virtualization exists
+    return hmode(env, csrno);
+}
+
 static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
 {
     if (riscv_cpu_cfg(env)->ext_smepmp) {
@@ -2455,6 +2465,11 @@ static bool xiselect_spmp_range(target_ulong isel)
     return (ISELECT_SPMP_BASE <= isel && isel <= ISELECT_SPMP_BASE + MAX_RISCV_SPMPS);
 }
 
+static bool xiselect_vspmp_range(target_ulong isel)
+{
+    return (ISELECT_VSPMP_BASE <= isel && isel <= ISELECT_VSPMP_BASE + MAX_RISCV_VSPMPS);
+}
+
 static int rmw_iprio(target_ulong xlen,
                      target_ulong iselect, uint8_t *iprio,
                      target_ulong *val, target_ulong new_val,
@@ -2794,6 +2809,10 @@ static int rmw_xireg_ctr(CPURISCVState *env, int csrno,
 static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask);
+
+static int rmw_xireg_vspmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask);
 /*
  * rmw_xireg_csrind: Perform indirect access to xireg and xireg2-xireg6
  *
@@ -2821,6 +2840,15 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
         }
 
         ret = rmw_xireg_spmp(env, csrno, isel, val, new_val, wr_mask);
+    } else if (xiselect_vspmp_range(isel)) {
+        ret = vspmp(env, csrno); // Is VSPMP enabled?
+        if (ret != RISCV_EXCP_NONE) {
+            qemu_log_mask(CPU_LOG_SPMP,
+                      "VSPMP is not enabled\n");
+            return ret;
+        }
+
+        ret = rmw_xireg_vspmp(env, csrno, isel, val, new_val, wr_mask);
     } else {
         /*
          * As per the specification, access to unimplented region is undefined
@@ -5346,6 +5374,52 @@ static RISCVException rmw_spmpswitchh(CPURISCVState *env, int csrno,
     return ret;
 }
 
+static RISCVException rmw_vspmpswitch64(CPURISCVState *env, int csrno,
+                                    uint64_t *ret_val,
+                                    uint64_t new_val, uint64_t wr_mask)
+{
+    uint64_t new_vspmpswitch = (env->vspmpswitch & ~wr_mask) | (new_val & wr_mask);
+    
+    if (ret_val) {
+        *ret_val = env->vspmpswitch;
+    }
+    
+    env->vspmpswitch = new_vspmpswitch;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_vspmpswitch(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+    ret = rmw_vspmpswitch64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_vspmpswitchh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+
+    ret = rmw_vspmpswitch64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
+}
+
 static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask)
@@ -5379,6 +5453,47 @@ static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
             }
 
             spmpcfg_csr_write(env, index, new_val & wr_mask, m_mode_access);
+            break;
+        default: 
+            return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return 0;
+}
+
+static int rmw_xireg_vspmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask)
+{
+    int index = 0;
+    bool s_mode_access = false;
+
+    index = isel - ISELECT_SPMP_BASE;
+
+    switch (csrno) {
+        case CSR_SIREG:
+            // If HS mode, signal it
+            s_mode_access = true;
+            [[fallthrough]];
+        case CSR_VSIREG:
+            if(val) {
+                *val = vspmpaddr_csr_read(env, index);
+            }
+            vspmpaddr_csr_write(env, index, new_val & wr_mask, s_mode_access);
+            break;
+        
+        case CSR_SIREG2:
+            // If HS mode, signal it
+            s_mode_access = true;
+            [[fallthrough]];
+        case CSR_VSIREG2:
+            index = isel - ISELECT_SPMP_BASE;
+
+            if(val) {
+                *val = vspmpcfg_csr_read(env, index);
+            }
+
+            vspmpcfg_csr_write(env, index, new_val & wr_mask, s_mode_access);
             break;
         default: 
             return RISCV_EXCP_ILLEGAL_INST;
@@ -6243,6 +6358,10 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MPMPDELEG]   = { "mpmpdeleg", spmp, NULL, NULL, rmw_mpmpdeleg },
     [CSR_SPMPSWITCH]  = { "spmpswitch", spmp, NULL, NULL, rmw_spmpswitch },
     [CSR_SPMPSWITCHH] = { "spmpswitchh", spmp, NULL, NULL, rmw_spmpswitchh },
+
+    /* Virtual S-mode Physical Memory Protection */
+    [CSR_VSPMPSWITCH]  = { "vspmpswitch", vspmp, NULL, NULL, rmw_vspmpswitch },
+    [CSR_VSPMPSWITCHH] = { "vspmpswitchh", vspmp, NULL, NULL, rmw_vspmpswitchh },
 
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },

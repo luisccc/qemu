@@ -192,6 +192,7 @@ struct RISCVCPUConfig {
     bool mmu;
     bool pmp;
     bool spmp;
+    bool vspmp;
     bool debug;
     bool misa_w;
 

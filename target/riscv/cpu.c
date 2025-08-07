@@ -473,6 +473,7 @@ static void riscv_max_cpu_init(Object *obj)
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
+    cpu->cfg.vspmp = true;
 
     env->priv_ver = PRIV_VERSION_LATEST;
 #ifndef CONFIG_USER_ONLY
@@ -491,6 +492,8 @@ static void rv64_base_cpu_init(Object *obj)
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
+    cpu->cfg.vspmp = true;
+
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -1118,6 +1121,10 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
         env->mpmpdeleg = MPMP_DELEG_DEFAULT;
 
         spmp_unlock_entries(env);
+    }
+
+    if (riscv_cpu_cfg(env)->vspmp) {
+        vspmp_unlock_entries(env);
     }
 #else
     env->priv = PRV_U;

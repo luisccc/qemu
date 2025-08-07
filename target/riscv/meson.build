@@ -30,6 +30,7 @@ riscv_system_ss.add(files(
   'arch_dump.c',
   'pmp.c',
   'spmp.c',
+  'vspmp.c',
   'debug.c',
   'monitor.c',
   'machine.c',

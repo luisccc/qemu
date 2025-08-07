@@ -165,11 +165,13 @@ extern RISCVCPUImpliedExtsRule *riscv_multi_ext_implied_rules[];
 
 #define MAX_RISCV_PMPS (64)
 #define MAX_RISCV_SPMPS (64)
+#define MAX_RISCV_VSPMPS (64)
 #define MPMP_DELEG_DEFAULT (64)
 
 #if !defined(CONFIG_USER_ONLY)
 #include "pmp.h"
 #include "spmp.h"
+#include "vspmp.h"
 #include "debug.h"
 #endif
 
@@ -442,6 +444,9 @@ struct CPUArchState {
     uint16_t     mpmpdeleg;
     uint64_t     spmpswitch;
     spmp_table_t spmp_state;
+
+    uint64_t     vspmpswitch;
+    spmp_table_t vspmp_state;
 
     /* trigger module */
     target_ulong trigger_cur;
