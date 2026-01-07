@@ -1752,46 +1752,50 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
 
     switch (access_type) {
     case MMU_INST_FETCH:
-        // It occurs before the PMP
-        if (spmp_violation) {
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_INST_PAGE_FAULT);
-            cs->exception_index = RISCV_EXCP_INST_PAGE_FAULT;
-        }
-        else if (pmp_violation) {
+        if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_INST_ACCESS_FAULT;
-        } else if (env->virt_enabled && !first_stage) {
+        } else if (env->virt_enabled && (!first_stage || spmp_violation)) {
             cs->exception_index = RISCV_EXCP_INST_GUEST_PAGE_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_INST_GUEST_PAGE_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_INST_PAGE_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_INST_PAGE_FAULT);
         }
         break;
     case MMU_DATA_LOAD:
-        if (spmp_violation) {
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_LOAD_PAGE_FAULT);
-            cs->exception_index = RISCV_EXCP_LOAD_PAGE_FAULT;
-        }
-        else if (pmp_violation) {
+        if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_LOAD_ACCESS_FAULT;
-        } else if (two_stage && !first_stage) {
+        } else if ((two_stage && !first_stage) || 
+                    (env->virt_enabled && spmp_violation)) {
             cs->exception_index = RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_LOAD_PAGE_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_LOAD_PAGE_FAULT);
         }
         break;
     case MMU_DATA_STORE:
-        if (spmp_violation) {
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_STORE_PAGE_FAULT);
-            cs->exception_index = RISCV_EXCP_STORE_PAGE_FAULT;
-        }
-        else if (pmp_violation) {
+        if (pmp_violation) {
             cs->exception_index = RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
-        } else if (two_stage && !first_stage) {
+        } else if ((two_stage && !first_stage) || 
+                    (env->virt_enabled && spmp_violation)) {
             cs->exception_index = RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_STORE_PAGE_FAULT;
+
+            qemu_log_mask(CPU_LOG_SPMP,
+                            "Raising %d\n", RISCV_EXCP_STORE_PAGE_FAULT);
         }
         break;
     default:

@@ -472,7 +472,9 @@ static void riscv_max_cpu_init(Object *obj)
 
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
+    
     cpu->cfg.spmp = true;
+    cpu->cfg.ext_smpmpdeleg = true;
 
     env->priv_ver = PRIV_VERSION_LATEST;
 #ifndef CONFIG_USER_ONLY
@@ -491,6 +493,7 @@ static void rv64_base_cpu_init(Object *obj)
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
+    cpu->cfg.ext_smpmpdeleg = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -741,6 +744,7 @@ static void rv32_base_cpu_init(Object *obj)
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
+    cpu->cfg.ext_smpmpdeleg = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -1116,6 +1120,7 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     // Is SPMP enabled?
     if (riscv_cpu_cfg(env)->spmp) {
         env->mpmpdeleg = MPMP_DELEG_DEFAULT;
+        env->spmp_state.num_deleg_rules = 64 - MPMP_DELEG_DEFAULT;
 
         spmp_unlock_entries(env);
     }
@@ -1960,6 +1965,7 @@ static void prop_spmp_set(Object *obj, Visitor *v, const char *name,
 
     cpu_option_add_user_setting(name, value);
     cpu->cfg.spmp = value;
+    cpu->cfg.ext_smpmpdeleg = value;
 }
 
 static void prop_spmp_get(Object *obj, Visitor *v, const char *name,
@@ -1975,6 +1981,38 @@ static const PropertyInfo prop_spmp = {
     .description = "spmp",
     .get = prop_spmp_get,
     .set = prop_spmp_set,
+};
+
+static void prop_sspmpsw_set(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    bool value;
+
+    visit_type_bool(v, name, &value, errp);
+
+    if (cpu->cfg.spmp != value && riscv_cpu_is_vendor(obj)) {
+        cpu_set_prop_err(cpu, name, errp);
+        return;
+    }
+
+    cpu_option_add_user_setting(name, value);
+    cpu->cfg.ext_sspmpsw = value;
+}
+
+static void prop_sspmpsw_get(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    bool value = RISCV_CPU(obj)->cfg.ext_sspmpsw;
+
+    visit_type_bool(v, name, &value, errp);
+}
+
+static const PropertyInfo prop_ext_sspmpsw = {
+    .type = "bool",
+    .description = "ext_sspmpsw",
+    .get = prop_sspmpsw_get,
+    .set = prop_sspmpsw_set,
 };
 
 static int priv_spec_from_str(const char *priv_spec_str)
@@ -2977,6 +3015,7 @@ static const Property riscv_cpu_properties[] = {
     {.name = "mmu", .info = &prop_mmu},
     {.name = "pmp", .info = &prop_pmp},
     {.name = "spmp", .info = &prop_spmp},
+    {.name = "sspmpsw", .info = &prop_ext_sspmpsw},
 
     {.name = "priv_spec", .info = &prop_priv_spec},
     {.name = "vext_spec", .info = &prop_vext_spec},

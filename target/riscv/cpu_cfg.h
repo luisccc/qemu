@@ -191,7 +191,11 @@ struct RISCVCPUConfig {
     uint16_t cboz_blocksize;
     bool mmu;
     bool pmp;
+
     bool spmp;
+    bool ext_sspmpsw;
+    bool ext_smpmpdeleg;
+
     bool debug;
     bool misa_w;
 

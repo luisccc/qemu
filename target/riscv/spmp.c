@@ -53,14 +53,6 @@ static inline int sum_is_set(CPURISCVState *env)
     return 0;
 }
 
-/*
- * Count the number of active rules.
- */
-static inline uint32_t spmp_get_num_rules(CPURISCVState *env)
-{
-     return env->spmp_state.num_rules;
-}
-
 void spmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea)
 {
     /*
@@ -126,12 +118,12 @@ static void spmp_update_rule_nums(CPURISCVState *env)
 {
     int i;
 
-    env->spmp_state.num_rules = 0;
+    env->spmp_state.num_active_rules = 0;
     for (i = 0; i < MAX_RISCV_SPMPS; i++) {
         const uint8_t a_field =
             spmp_get_a_field(env->spmp_state.spmp[i].cfg_reg);
         if (SPMP_AMATCH_OFF != a_field) {
-            env->spmp_state.num_rules++;
+            env->spmp_state.num_active_rules++;
         }
     }
 }
@@ -157,9 +149,13 @@ static uint8_t spmp_is_in_range(CPURISCVState *env, int spmp_index, target_ulong
     return 0;
 }
 
-static bool spmp_get_spmpswitch_bit(CPURISCVState *env, int spmp_index)
+static bool spmp_get_spmpswitch_bit(CPURISCVState *env, int index)
 {
-    return (env->spmpswitch >> spmp_index) & 0x1;
+    if(!riscv_cpu_cfg(env)->ext_sspmpsw) {
+        return true;
+    }
+
+    return (env->spmp_state.spmpswitch >> index) & 0x1;
 }
 
 /*
@@ -170,9 +166,8 @@ static bool spmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
     target_ulong mode)
 {
     bool ret;
-    bool virt = env->virt_enabled;
-    mode = virt? PRV_U : mode;
-
+    mode = env->virt_enabled? PRV_U : mode;
+    
     if ((!riscv_cpu_cfg(env)->spmp) || !(mode == PRV_U)) {
         /*
          * The SPMP proposal states three circumstances that the access is allowed:
@@ -214,8 +209,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong e = 0;
     bool spmpswitch_en = false;
 
-    bool virt = env->virt_enabled;
-    mode = virt? PRV_U : mode; // If it is either VS or VU mode, we treat it as U mode
+    mode = env->virt_enabled? PRV_U : mode; // If it is either VS or VU mode, we treat it as U mode
 
 	/* Short cut for M-mode access*/
     if (mode == PRV_M) {
@@ -224,7 +218,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
 	}
 
     /* Short cut if no rules */
-    if (0 == spmp_get_num_rules(env)) {
+    if (env->spmp_state.num_active_rules ==0) {
         return spmp_hart_has_privs_default(env, addr, size, privs,
                                           allowed_privs, mode);
     }
@@ -244,7 +238,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     }
 
     /* It depends on mpmpdeleg */
-    for (i = env->mpmpdeleg; i < MAX_RISCV_SPMPS; i++) {
+    for (i = 0; i < env->spmp_state.num_deleg_rules; i++) {
         s = spmp_is_in_range(env, i, addr);
         e = spmp_is_in_range(env, i, addr + spmp_size - 1);
         spmpswitch_en = spmp_get_spmpswitch_bit(env, i);
@@ -275,6 +269,8 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
              * If the SPMP entry is not off, spmpswitch bit is set, and the address is in range,
              * do the priv check
              */
+
+            // Shared not set 
             if(!(env->spmp_state.spmp[i].cfg_reg & SPMP_SHARED)) {
                 /*  
                 *   Deny if:
@@ -285,6 +281,12 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                   (mode == PRV_U && !(env->spmp_state.spmp[i].cfg_reg & SPMP_UMODE))) {
                     *allowed_privs = 0;
                 }
+                /*  
+                *   EnforceNoX if:
+                *   S mode access, with SUM set, and UMODE set.
+                * 
+                *   Note: The specification has the table in RWX, the oposite of the order in the cfg reg.
+                */
                 else if (mode == PRV_S && sum_is_set(env) && (env->spmp_state.spmp[i].cfg_reg & SPMP_UMODE)){
                     switch (spmp_operation) {
                         case 0:
@@ -309,10 +311,11 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     // Check for reserved configs
                     if(spmp_operation == 2 || spmp_operation == 6)
                         *allowed_privs = 0;
-                    else
+                    else // U mode falls here - Enforce
                         *allowed_privs = spmp_operation & 0x7;
                 }
             }
+            // Set Shared bit
             else {
                 if(mode == PRV_S){
                     // Check for reserved configs
@@ -359,6 +362,27 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     return ret == 1 ? true : false;
 }
 
+static bool is_entry_locked(CPURISCVState *env, int index){
+    uint8_t next_a_field = SPMP_AMATCH_TOR;
+
+    /*
+    *  Verify if it is the last entry. 
+    *  If not, check if the next entry is TOR type. 
+    *  If it is TOR, check if either this or next entry is locked.
+    */
+    if (index < env->spmp_state.num_deleg_rules - 1){
+        next_a_field = spmp_get_a_field(env->spmp_state.spmp[index + 1].cfg_reg);
+
+        if(next_a_field == SPMP_AMATCH_TOR){
+            return (env->spmp_state.locked_rules >> index) & 0x1
+                    || (env->spmp_state.locked_rules >> (index + 1)) & 0x1;
+        }
+    }
+
+    // Otherwise, just check this entry
+    return (env->spmp_state.locked_rules >> index) & 0x1;
+}
+
 /*
  * Accessor to set the cfg reg for a specific SPMP/HART
  * Bounds checks.
@@ -366,21 +390,27 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
 void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     target_ulong val, bool m_mode_access)
 {
-    // M mode bypasses the lock
-    bool locked = m_mode_access ? 0 :
-                    (env->spmp_state.spmp[reg_index].cfg_reg & SPMP_LOCK) >> 7;
+    bool locked = m_mode_access ? false : is_entry_locked(env, reg_index);
 
     // If within bounds and not locked
-    if (reg_index < MAX_RISCV_SPMPS && reg_index >= env->mpmpdeleg 
-            && !locked) {
+    if (reg_index < env->spmp_state.num_deleg_rules && !locked) {
     
         env->spmp_state.spmp[reg_index].cfg_reg = val;
+        // Storing this allows for faster switching with the sspmpsw extension
+        env->spmp_state.locked_rules |= ((val & SPMP_LOCK) >> 7 & 0x1) << reg_index;
+
         spmp_update_rule(env, reg_index);
         qemu_log_mask(CPU_LOG_SPMP,
                       "%s: new config: " HWADDR_FMT_plx " in entry: %d\n", __func__, val, reg_index);
     } else {
-        qemu_log_mask(LOG_GUEST_ERROR,
+        if (locked){
+            qemu_log_mask(LOG_GUEST_ERROR,
+                    "%s: ignoring spmpcfg write - locked entry \n", __func__);
+        }
+        else {
+            qemu_log_mask(LOG_GUEST_ERROR,
                     "%s: ignoring spmpcfg write - out of bounds\n", __func__);
+        }
     }
 }
 
@@ -389,7 +419,7 @@ void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
  */
 target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
 {
-    if (reg_index < MAX_RISCV_SPMPS && reg_index > env->mpmpdeleg) {
+    if (reg_index < env->spmp_state.num_deleg_rules) {
         return env->spmp_state.spmp[reg_index].cfg_reg;
     }
 
@@ -402,19 +432,22 @@ target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
 void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val, bool m_mode_access)
 {
-    // M mode bypasses the lock
-    bool locked = m_mode_access ? 0 : 
-                    (env->spmp_state.spmp[addr_index].cfg_reg & SPMP_LOCK) >> 7;
+    bool locked = m_mode_access ? false : is_entry_locked(env, addr_index);
 
     // If within bounds and not locked
-    if (addr_index < MAX_RISCV_SPMPS && addr_index >= env->mpmpdeleg 
-            && !locked) {
+    if (addr_index < env->spmp_state.num_deleg_rules && !locked) {
 
         env->spmp_state.spmp[addr_index].addr_reg = val;
         spmp_update_rule(env, addr_index);
     } else {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: ignoring spmpaddr write - out of bounds\n", __func__);
+        if (locked){
+            qemu_log_mask(LOG_GUEST_ERROR,
+                    "%s: ignoring spmpaddr write - locked entry \n", __func__);
+        }
+        else {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                    "%s: ignoring spmpaddr write - out of bounds\n", __func__);
+        }
     }
 }
 
@@ -425,7 +458,7 @@ target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
 {
     target_ulong val = 0;
 
-    if (addr_index < MAX_RISCV_SPMPS && addr_index > env->mpmpdeleg) {
+    if (addr_index < env->spmp_state.num_deleg_rules) {
         val = env->spmp_state.spmp[addr_index].addr_reg;
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -433,6 +466,18 @@ target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
     }
 
     return val;
+}
+
+/*
+ * Handle a write to the sspmpswitch CSR
+ */
+void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val)
+{
+    uint64_t mask = (env->spmp_state.num_deleg_rules == MAX_RISCV_SPMPS) ? ~0ULL : ((1ULL << env->spmp_state.num_deleg_rules) - 1);
+    
+    // If the rule is locked, the bit cannot be changed
+    env->spmp_state.spmpswitch = (env->spmp_state.spmpswitch & env->spmp_state.locked_rules) | (new_val & ~env->spmp_state.locked_rules);
+    env->spmp_state.spmpswitch &= mask;
 }
 
 /*
@@ -461,4 +506,7 @@ void spmp_unlock_entries(CPURISCVState *env)
     for (int i = 0; i < MAX_RISCV_SPMPS; i++) {
         env->spmp_state.spmp[i].cfg_reg &= ~(SPMP_LOCK | SPMP_AMATCH);
     }
+
+    env->spmp_state.locked_rules = 0;
+    env->spmp_state.num_active_rules = 0;
 }

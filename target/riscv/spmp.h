@@ -58,7 +58,11 @@ typedef struct {
 typedef struct {
     spmp_entry_t spmp[MAX_RISCV_SPMPS];
     spmp_addr_t  addr[MAX_RISCV_SPMPS];
-    uint32_t num_rules;
+    
+    uint8_t     num_active_rules;
+    uint8_t     num_deleg_rules;
+    uint64_t    spmpswitch;
+    uint64_t    locked_rules;
 } spmp_table_t;
 
 void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
@@ -68,6 +72,8 @@ target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index);
 target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index);
 void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val, bool m_mode_access);
+
+void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
 
 bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,

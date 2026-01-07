@@ -753,12 +753,22 @@ static RISCVException pmp(CPURISCVState *env, int csrno)
 
 static RISCVException spmp(CPURISCVState *env, int csrno)
 {
-    if (riscv_cpu_cfg(env)->spmp) {
-        return RISCV_EXCP_NONE;
+    if (!riscv_cpu_cfg(env)->spmp) {
+        return RISCV_EXCP_ILLEGAL_INST;
     }
 
     // SPMP can only exist, if smode exists
     return smode(env, csrno);
+}
+
+static RISCVException sspmpsw(CPURISCVState *env, int csrno)
+{
+    if (!riscv_cpu_cfg(env)->ext_sspmpsw) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    // SSPMPSW can only exist, if spmp exists
+    return spmp(env, csrno);
 }
 
 static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
@@ -5293,10 +5303,12 @@ static RISCVException rmw_mpmpdeleg(CPURISCVState *env, int csrno,
     }
 
     // pmpnum is locked if MSECCFG_MML is set
-    if (!(env->mseccfg & MSECCFG_MML)) {
+    // and if new_mpmpdeleg is higher than last locked rule
+    if (!(env->mseccfg & MSECCFG_MML) && (new_mpmpdeleg & 0x7F) > env->pmp_state.last_locked_rule) {
         env->mpmpdeleg = new_mpmpdeleg & 0x7F;
     }
 
+    env->spmp_state.num_deleg_rules = MPMP_DELEG_DEFAULT - env->mpmpdeleg;
     return RISCV_EXCP_NONE;
 }
 
@@ -5304,13 +5316,24 @@ static RISCVException rmw_spmpswitch64(CPURISCVState *env, int csrno,
                                     uint64_t *ret_val,
                                     uint64_t new_val, uint64_t wr_mask)
 {
-    uint64_t new_spmpswitch = (env->spmpswitch & ~wr_mask) | (new_val & wr_mask);
+    uint64_t new_spmpswitch = (env->spmp_state.spmpswitch & ~wr_mask) | (new_val & wr_mask);
     
-    if (ret_val) {
-        *ret_val = env->spmpswitch;
+    if (env->spmp_state.num_deleg_rules == 0){
+        qemu_log_mask(CPU_LOG_SPMP,
+                    "SPMP is enabled but no rules are delegated\n");
+        
+        if (ret_val)
+            *ret_val = 0;
+        
+        return RISCV_EXCP_NONE;
     }
     
-    env->spmpswitch = new_spmpswitch;
+
+    if (ret_val) {
+        *ret_val = env->spmp_state.spmpswitch;
+    }
+    
+    sspmpswitch_csr_write(env, new_spmpswitch);
 
     return RISCV_EXCP_NONE;
 }
@@ -5352,6 +5375,16 @@ static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
 {
     int index = 0;
     bool m_mode_access = false;
+
+    // Read 0 and write ignore if no rules are delegated
+    if (env->spmp_state.num_deleg_rules == 0)
+    {
+        qemu_log_mask(CPU_LOG_SPMP,
+                    "SPMP is enabled but no rules are delegated\n");
+            
+        *val = 0;
+        return 0;
+    }
 
     index = isel - ISELECT_SPMP_BASE;
 
@@ -6241,8 +6274,8 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
         /* S-mode Physical Memory Protection */
     [CSR_MPMPDELEG]   = { "mpmpdeleg", spmp, NULL, NULL, rmw_mpmpdeleg },
-    [CSR_SPMPSWITCH]  = { "spmpswitch", spmp, NULL, NULL, rmw_spmpswitch },
-    [CSR_SPMPSWITCHH] = { "spmpswitchh", spmp, NULL, NULL, rmw_spmpswitchh },
+    [CSR_SPMPSWITCH]  = { "spmpswitch", sspmpsw, NULL, NULL, rmw_spmpswitch },
+    [CSR_SPMPSWITCHH] = { "spmpswitchh", sspmpsw, NULL, NULL, rmw_spmpswitchh },
 
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },

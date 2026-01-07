@@ -440,7 +440,6 @@ struct CPUArchState {
     
     /* S-mode Physical Memory Protection */
     uint16_t     mpmpdeleg;
-    uint64_t     spmpswitch;
     spmp_table_t spmp_state;
 
     /* trigger module */

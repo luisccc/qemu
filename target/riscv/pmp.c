@@ -130,6 +130,11 @@ static bool pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
                 return false;
             }
             env->pmp_state.pmp[pmp_index].cfg_reg = val;
+            
+            if((val & PMP_LOCK) && env->pmp_state.last_locked_rule < (signed int)pmp_index /*can make signed as the spec only goes up to 64*/) {
+                env->pmp_state.last_locked_rule = pmp_index;
+            }
+
             pmp_update_rule_addr(env, pmp_index);
             return true;
         }
@@ -149,6 +154,8 @@ void pmp_unlock_entries(CPURISCVState *env)
     for (i = 0; i < pmp_num; i++) {
         env->pmp_state.pmp[i].cfg_reg &= ~(PMP_LOCK | PMP_AMATCH);
     }
+
+    env->pmp_state.last_locked_rule = -1;
 }
 
 static void pmp_decode_napot(hwaddr a, hwaddr *sa, hwaddr *ea)
@@ -477,7 +484,7 @@ void pmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     bool modified = false;
 
     trace_pmpcfg_csr_write(env->mhartid, reg_index, val);
-
+    
     for (i = 0; i < pmpcfg_nums; i++) {
         cfg_val = (val >> 8 * i)  & 0xff;
         modified |= pmp_write_cfg(env, (reg_index * 4) + i, cfg_val);
