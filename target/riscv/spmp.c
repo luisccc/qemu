@@ -155,7 +155,8 @@ static bool spmp_get_spmpswitch_bit(CPURISCVState *env, int index)
         return true;
     }
 
-    return (env->spmp_state.spmpswitch >> index) & 0x1;
+    // If it is virtualized, read from hspmpswitch
+    return env->virt_enabled? (env->hspmpswitch >> index) & 0x1 : (env->spmp_state.spmpswitch >> index) & 0x1;
 }
 
 /*
@@ -478,6 +479,18 @@ void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val)
     // If the rule is locked, the bit cannot be changed
     env->spmp_state.spmpswitch = (env->spmp_state.spmpswitch & env->spmp_state.locked_rules) | (new_val & ~env->spmp_state.locked_rules);
     env->spmp_state.spmpswitch &= mask;
+}
+
+/*
+ * Handle a write to the hspmpswitch CSR
+ */
+void hspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val)
+{
+    uint64_t mask = (env->spmp_state.num_deleg_rules == MAX_RISCV_SPMPS) ? ~0ULL : ((1ULL << env->spmp_state.num_deleg_rules) - 1);
+
+    // If the rule is locked, the bit cannot be changed
+    env->hspmpswitch = (env->hspmpswitch & env->spmp_state.locked_rules) | (new_val & ~env->spmp_state.locked_rules);
+    env->hspmpswitch &= mask;
 }
 
 /*

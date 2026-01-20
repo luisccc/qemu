@@ -771,6 +771,16 @@ static RISCVException sspmpsw(CPURISCVState *env, int csrno)
     return spmp(env, csrno);
 }
 
+static RISCVException hspmpsw(CPURISCVState *env, int csrno)
+{
+    if (!riscv_cpu_cfg(env)->ext_sshspmpsw) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    //  can only exist, if SSPMPSW exists
+    return sspmpsw(env, csrno);
+}
+
 static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
 {
     if (riscv_cpu_cfg(env)->ext_smepmp) {
@@ -5369,6 +5379,63 @@ static RISCVException rmw_spmpswitchh(CPURISCVState *env, int csrno,
     return ret;
 }
 
+static RISCVException rmw_hspmpswitch64(CPURISCVState *env, int csrno,
+                                    uint64_t *ret_val,
+                                    uint64_t new_val, uint64_t wr_mask)
+{
+    uint64_t new_hspmpswitch = (env->hspmpswitch & ~wr_mask) | (new_val & wr_mask);
+    
+    if (env->spmp_state.num_deleg_rules == 0){
+        qemu_log_mask(CPU_LOG_SPMP,
+                    "SPMP is enabled but no rules are defined\n");
+        
+        if (ret_val)
+            *ret_val = 0;
+        
+        return RISCV_EXCP_NONE;
+    }
+    
+
+    if (ret_val) {
+        *ret_val = env->hspmpswitch;
+    }
+    
+    hspmpswitch_csr_write(env, new_hspmpswitch);
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_hspmpswitch(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+    ret = rmw_hspmpswitch64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_hspmpswitchh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+
+    ret = rmw_hspmpswitch64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
+}
+
 static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask)
@@ -6276,6 +6343,10 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MPMPDELEG]   = { "mpmpdeleg", spmp, NULL, NULL, rmw_mpmpdeleg },
     [CSR_SPMPSWITCH]  = { "spmpswitch", sspmpsw, NULL, NULL, rmw_spmpswitch },
     [CSR_SPMPSWITCHH] = { "spmpswitchh", sspmpsw, NULL, NULL, rmw_spmpswitchh },
+
+    [CSR_HSPMPSWITCH] = { "hspmpswitch", hspmpsw, NULL, NULL, rmw_hspmpswitch },
+    [CSR_HSPMPSWITCHH] = { "hspmpswitchh", hspmpsw, NULL, NULL, rmw_hspmpswitchh },
+    
 
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },

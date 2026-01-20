@@ -74,6 +74,7 @@ void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val, bool m_mode_access);
 
 void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
+void hspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
 
 bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,

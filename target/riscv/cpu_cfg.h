@@ -196,6 +196,8 @@ struct RISCVCPUConfig {
     bool ext_sspmpsw;
     bool ext_smpmpdeleg;
 
+    bool ext_sshspmpsw;
+
     bool debug;
     bool misa_w;
 

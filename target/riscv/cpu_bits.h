@@ -278,6 +278,10 @@
 #define CSR_HENVCFG         0x60A
 #define CSR_HENVCFGH        0x61A
 
+/* Hypervisor SPMP */
+#define CSR_HSPMPSWITCH       0x616
+#define CSR_HSPMPSWITCHH      0x617
+
 /* Hypervisor state CSRs */
 #define CSR_HSTATEEN0       0x60C
 #define CSR_HSTATEEN0H      0x61C

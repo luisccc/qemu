@@ -442,6 +442,9 @@ struct CPUArchState {
     uint16_t     mpmpdeleg;
     spmp_table_t spmp_state;
 
+    /* Hypervisor */
+    uint64_t     hspmpswitch;
+
     /* trigger module */
     target_ulong trigger_cur;
     target_ulong tdata1[RV_MAX_TRIGGERS];

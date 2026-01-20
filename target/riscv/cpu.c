@@ -2015,6 +2015,39 @@ static const PropertyInfo prop_ext_sspmpsw = {
     .set = prop_sspmpsw_set,
 };
 
+static void prop_sshspmpsw_set(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    bool value;
+
+    visit_type_bool(v, name, &value, errp);
+
+    if ((cpu->cfg.ext_sshspmpsw != value && riscv_cpu_is_vendor(obj)) ||
+        (!cpu->cfg.spmp && !cpu->cfg.ext_sspmpsw)) {
+        cpu_set_prop_err(cpu, name, errp);
+        return;
+    }
+
+    cpu_option_add_user_setting(name, value);
+    cpu->cfg.ext_sshspmpsw = value;
+}
+
+static void prop_sshspmpsw_get(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    bool value = RISCV_CPU(obj)->cfg.ext_sshspmpsw;
+
+    visit_type_bool(v, name, &value, errp);
+}
+
+static const PropertyInfo prop_ext_sshspmpsw = {
+    .type = "bool",
+    .description = "ext_sshspmpsw",
+    .get = prop_sshspmpsw_get,
+    .set = prop_sshspmpsw_set,
+};
+
 static int priv_spec_from_str(const char *priv_spec_str)
 {
     int priv_version = -1;
@@ -3016,6 +3049,7 @@ static const Property riscv_cpu_properties[] = {
     {.name = "pmp", .info = &prop_pmp},
     {.name = "spmp", .info = &prop_spmp},
     {.name = "sspmpsw", .info = &prop_ext_sspmpsw},
+    {.name = "sshspmpsw", .info = &prop_ext_sshspmpsw},
 
     {.name = "priv_spec", .info = &prop_priv_spec},
     {.name = "vext_spec", .info = &prop_vext_spec},
