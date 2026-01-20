@@ -2011,15 +2011,22 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
              * Check both SPMP and PMP if the core is running in bare mode
              * or the HW does not implement an MMU.
              * Check PMP only if paging is enabled.
+             * 
+             * When V = 1 and hgatp.MODE = Bare - SPMP Hypervisor Extension
+             * 
              */
-            int vm;
+            int satp, hgatp;
             if (riscv_cpu_mxl(env) == MXL_RV32) {
-                vm = get_field(env->satp, SATP32_MODE);
+                satp = get_field(env->satp, SATP32_MODE);
+                hgatp = get_field(env->hgatp, SATP32_MODE);
             } else {
-                vm = get_field(env->satp, SATP64_MODE);
+                satp = get_field(env->satp, SATP64_MODE);
+                hgatp = get_field(env->hgatp, SATP64_MODE);
             }
 
-            if (vm == VM_1_10_MBARE && riscv_cpu_cfg(env)->spmp) {
+            if (((env->virt_enabled && hgatp == VM_1_10_MBARE) ||
+                (!env->virt_enabled && satp == VM_1_10_MBARE)) && 
+                riscv_cpu_cfg(env)->spmp) {
                 /* S-mode Physical Memory Protection check */
                 ret = get_physical_address_spmp(env, &prot_spmp, pa,
                                                 size, access_type, mode);
