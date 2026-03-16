@@ -149,13 +149,13 @@ static uint8_t spmp_is_in_range(CPURISCVState *env, int spmp_index, target_ulong
     return 0;
 }
 
-static bool spmp_get_spmpswitch_bit(CPURISCVState *env, int index)
+static bool spmp_get_spmpen_bit(CPURISCVState *env, int index)
 {
-    if(!riscv_cpu_cfg(env)->ext_sspmpsw) {
+    if(!riscv_cpu_cfg(env)->ext_sspmpen) {
         return true;
     }
 
-    return (env->spmp_state.spmpswitch >> index) & 0x1;
+    return (env->spmp_state.spmpen >> index) & 0x1;
 }
 
 /*
@@ -207,7 +207,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     int spmp_size = 0;
     target_ulong s = 0;
     target_ulong e = 0;
-    bool spmpswitch_en = false;
+    bool spmpen_en = false;
 
     mode = env->virt_enabled? PRV_U : mode; // If it is either VS or VU mode, we treat it as U mode
 
@@ -241,7 +241,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
     for (i = 0; i < env->spmp_state.num_deleg_rules; i++) {
         s = spmp_is_in_range(env, i, addr);
         e = spmp_is_in_range(env, i, addr + spmp_size - 1);
-        spmpswitch_en = spmp_get_spmpswitch_bit(env, i);
+        spmpen_en = spmp_get_spmpen_bit(env, i);
 
         /* partially inside */
         if ((s + e) == 1) {
@@ -264,9 +264,9 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                                        | (env->spmp_state.spmp[i].cfg_reg & SPMP_WRITE)
                                        | (env->spmp_state.spmp[i].cfg_reg & SPMP_READ);
 
-        if (((s + e) == 2) && (SPMP_AMATCH_OFF != a_field) && spmpswitch_en) {
+        if (((s + e) == 2) && (SPMP_AMATCH_OFF != a_field) && spmpen_en) {
             /*
-             * If the SPMP entry is not off, spmpswitch bit is set, and the address is in range,
+             * If the SPMP entry is not off, spmpen bit is set, and the address is in range,
              * do the priv check
              */
 
@@ -396,7 +396,7 @@ void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     if (reg_index < env->spmp_state.num_deleg_rules && !locked) {
     
         env->spmp_state.spmp[reg_index].cfg_reg = val;
-        // Storing this allows for faster switching with the sspmpsw extension
+        // Storing this allows for faster switching with the sspmpen extension
         env->spmp_state.locked_rules |= ((val & SPMP_LOCK) >> 7 & 0x1) << reg_index;
 
         spmp_update_rule(env, reg_index);
@@ -469,15 +469,15 @@ target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
 }
 
 /*
- * Handle a write to the sspmpswitch CSR
+ * Handle a write to the sspmpen CSR
  */
-void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val)
+void sspmpen_csr_write(CPURISCVState *env, uint64_t new_val)
 {
     uint64_t mask = (env->spmp_state.num_deleg_rules == MAX_RISCV_SPMPS) ? ~0ULL : ((1ULL << env->spmp_state.num_deleg_rules) - 1);
     
     // If the rule is locked, the bit cannot be changed
-    env->spmp_state.spmpswitch = (env->spmp_state.spmpswitch & env->spmp_state.locked_rules) | (new_val & ~env->spmp_state.locked_rules);
-    env->spmp_state.spmpswitch &= mask;
+    env->spmp_state.spmpen = (env->spmp_state.spmpen & env->spmp_state.locked_rules) | (new_val & ~env->spmp_state.locked_rules);
+    env->spmp_state.spmpen &= mask;
 }
 
 /*

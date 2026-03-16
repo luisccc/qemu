@@ -193,7 +193,7 @@ struct RISCVCPUConfig {
     bool pmp;
 
     bool spmp;
-    bool ext_sspmpsw;
+    bool ext_sspmpen;
     bool ext_smpmpdeleg;
 
     bool debug;

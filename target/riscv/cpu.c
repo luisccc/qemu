@@ -475,6 +475,7 @@ static void riscv_max_cpu_init(Object *obj)
     
     cpu->cfg.spmp = true;
     cpu->cfg.ext_smpmpdeleg = true;
+    cpu->cfg.ext_sscsrind = true;
 
     env->priv_ver = PRIV_VERSION_LATEST;
 #ifndef CONFIG_USER_ONLY
@@ -494,6 +495,7 @@ static void rv64_base_cpu_init(Object *obj)
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
     cpu->cfg.ext_smpmpdeleg = true;
+    cpu->cfg.ext_sscsrind = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -745,6 +747,7 @@ static void rv32_base_cpu_init(Object *obj)
     cpu->cfg.pmp = true;
     cpu->cfg.spmp = true;
     cpu->cfg.ext_smpmpdeleg = true;
+    cpu->cfg.ext_sscsrind = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -1966,6 +1969,7 @@ static void prop_spmp_set(Object *obj, Visitor *v, const char *name,
     cpu_option_add_user_setting(name, value);
     cpu->cfg.spmp = value;
     cpu->cfg.ext_smpmpdeleg = value;
+    cpu->cfg.ext_sscsrind = value;
 }
 
 static void prop_spmp_get(Object *obj, Visitor *v, const char *name,
@@ -1983,7 +1987,7 @@ static const PropertyInfo prop_spmp = {
     .set = prop_spmp_set,
 };
 
-static void prop_sspmpsw_set(Object *obj, Visitor *v, const char *name,
+static void prop_sspmpen_set(Object *obj, Visitor *v, const char *name,
                          void *opaque, Error **errp)
 {
     RISCVCPU *cpu = RISCV_CPU(obj);
@@ -1997,22 +2001,22 @@ static void prop_sspmpsw_set(Object *obj, Visitor *v, const char *name,
     }
 
     cpu_option_add_user_setting(name, value);
-    cpu->cfg.ext_sspmpsw = value;
+    cpu->cfg.ext_sspmpen = value;
 }
 
-static void prop_sspmpsw_get(Object *obj, Visitor *v, const char *name,
+static void prop_sspmpen_get(Object *obj, Visitor *v, const char *name,
                          void *opaque, Error **errp)
 {
-    bool value = RISCV_CPU(obj)->cfg.ext_sspmpsw;
+    bool value = RISCV_CPU(obj)->cfg.ext_sspmpen;
 
     visit_type_bool(v, name, &value, errp);
 }
 
-static const PropertyInfo prop_ext_sspmpsw = {
+static const PropertyInfo prop_ext_sspmpen = {
     .type = "bool",
-    .description = "ext_sspmpsw",
-    .get = prop_sspmpsw_get,
-    .set = prop_sspmpsw_set,
+    .description = "ext_sspmpen",
+    .get = prop_sspmpen_get,
+    .set = prop_sspmpen_set,
 };
 
 static int priv_spec_from_str(const char *priv_spec_str)
@@ -3015,7 +3019,7 @@ static const Property riscv_cpu_properties[] = {
     {.name = "mmu", .info = &prop_mmu},
     {.name = "pmp", .info = &prop_pmp},
     {.name = "spmp", .info = &prop_spmp},
-    {.name = "sspmpsw", .info = &prop_ext_sspmpsw},
+    {.name = "sspmpen", .info = &prop_ext_sspmpen},
 
     {.name = "priv_spec", .info = &prop_priv_spec},
     {.name = "vext_spec", .info = &prop_vext_spec},

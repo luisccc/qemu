@@ -761,13 +761,13 @@ static RISCVException spmp(CPURISCVState *env, int csrno)
     return smode(env, csrno);
 }
 
-static RISCVException sspmpsw(CPURISCVState *env, int csrno)
+static RISCVException sspmpen(CPURISCVState *env, int csrno)
 {
-    if (!riscv_cpu_cfg(env)->ext_sspmpsw) {
+    if (!riscv_cpu_cfg(env)->ext_sspmpen) {
         return RISCV_EXCP_ILLEGAL_INST;
     }
 
-    // SSPMPSW can only exist, if spmp exists
+    // SSPMPEN can only exist, if spmp exists
     return spmp(env, csrno);
 }
 
@@ -2825,8 +2825,6 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
     } else if (xiselect_spmp_range(isel)) {
         ret = spmp(env, csrno); // Is SPMP enabled?
         if (ret != RISCV_EXCP_NONE) {
-            qemu_log_mask(CPU_LOG_SPMP,
-                      "SPMP is not enabled\n");
             return ret;
         }
 
@@ -5312,11 +5310,11 @@ static RISCVException rmw_mpmpdeleg(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
-static RISCVException rmw_spmpswitch64(CPURISCVState *env, int csrno,
+static RISCVException rmw_spmpen64(CPURISCVState *env, int csrno,
                                     uint64_t *ret_val,
                                     uint64_t new_val, uint64_t wr_mask)
 {
-    uint64_t new_spmpswitch = (env->spmp_state.spmpswitch & ~wr_mask) | (new_val & wr_mask);
+    uint64_t new_spmpen = (env->spmp_state.spmpen & ~wr_mask) | (new_val & wr_mask);
     
     if (env->spmp_state.num_deleg_rules == 0){
         qemu_log_mask(CPU_LOG_SPMP,
@@ -5330,21 +5328,21 @@ static RISCVException rmw_spmpswitch64(CPURISCVState *env, int csrno,
     
 
     if (ret_val) {
-        *ret_val = env->spmp_state.spmpswitch;
+        *ret_val = env->spmp_state.spmpen;
     }
     
-    sspmpswitch_csr_write(env, new_spmpswitch);
+    sspmpen_csr_write(env, new_spmpen);
 
     return RISCV_EXCP_NONE;
 }
 
-static RISCVException rmw_spmpswitch(CPURISCVState *env, int csrno,
+static RISCVException rmw_spmpen(CPURISCVState *env, int csrno,
                                   target_ulong *ret_val,
                                   target_ulong new_val, target_ulong wr_mask)
 {
     uint64_t rval = 0;
     RISCVException ret;
-    ret = rmw_spmpswitch64(env, csrno, &rval, new_val, wr_mask);
+    ret = rmw_spmpen64(env, csrno, &rval, new_val, wr_mask);
     if (ret_val) {
         *ret_val = rval;
     }
@@ -5352,7 +5350,7 @@ static RISCVException rmw_spmpswitch(CPURISCVState *env, int csrno,
     return ret;
 }
 
-static RISCVException rmw_spmpswitchh(CPURISCVState *env, int csrno,
+static RISCVException rmw_spmpenh(CPURISCVState *env, int csrno,
                                    target_ulong *ret_val,
                                    target_ulong new_val,
                                    target_ulong wr_mask)
@@ -5360,7 +5358,7 @@ static RISCVException rmw_spmpswitchh(CPURISCVState *env, int csrno,
     uint64_t rval = 0;
     RISCVException ret;
 
-    ret = rmw_spmpswitch64(env, csrno, &rval,
+    ret = rmw_spmpen64(env, csrno, &rval,
         ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
     if (ret_val) {
         *ret_val = rval >> 32;
@@ -6274,8 +6272,8 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
         /* S-mode Physical Memory Protection */
     [CSR_MPMPDELEG]   = { "mpmpdeleg", spmp, NULL, NULL, rmw_mpmpdeleg },
-    [CSR_SPMPSWITCH]  = { "spmpswitch", sspmpsw, NULL, NULL, rmw_spmpswitch },
-    [CSR_SPMPSWITCHH] = { "spmpswitchh", sspmpsw, NULL, NULL, rmw_spmpswitchh },
+    [CSR_SPMPEN]  = { "spmpen", sspmpen, NULL, NULL, rmw_spmpen },
+    [CSR_SPMPENH] = { "spmpenh", sspmpen, NULL, NULL, rmw_spmpenh },
 
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },
