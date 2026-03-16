@@ -1970,16 +1970,45 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             prot &= prot2;
 
             if (ret == TRANSLATE_SUCCESS) {
-                ret = get_physical_address_pmp(env, &prot_pmp, pa,
-                                               size, access_type, mode);
-                tlb_size = pmp_get_tlb_size(env, pa);
+                int vm;
+                if (riscv_cpu_mxl(env) == MXL_RV32) {
+                    vm = get_field(env->hgatp, SATP32_MODE);
+                } else {
+                    vm = get_field(env->hgatp, SATP64_MODE);
+                }
 
-                qemu_log_mask(CPU_LOG_MMU,
-                              "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
-                              " %d tlb_size %" HWADDR_PRIu "\n",
-                              __func__, pa, ret, prot_pmp, tlb_size);
+                if (vm == VM_1_10_MBARE && riscv_cpu_cfg(env)->spmp) {
+                    /* S-mode Physical Memory Protection check */
+                    ret = get_physical_address_spmp(env, &prot_spmp, pa,
+                                                    size, access_type, mode);
 
-                prot &= prot_pmp;
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
+                                __func__, pa, ret, prot_spmp);
+
+                    prot &= prot_spmp;
+
+                    if (ret == TRANSLATE_SPMP_FAIL) {
+                        qemu_log_mask(CPU_LOG_SPMP,
+                                "SPMP Check failed with SPMP address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", pa, access_type, mode);
+                        spmp_violation = true;
+                    }
+                }
+
+                /* Only apply checks when the SPMP passed */
+			    if (ret != TRANSLATE_SPMP_FAIL) {
+
+                    ret = get_physical_address_pmp(env, &prot_pmp, pa,
+                                                size, access_type, mode);
+                    tlb_size = pmp_get_tlb_size(env, pa);
+
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
+                                " %d tlb_size %" HWADDR_PRIu "\n",
+                                __func__, pa, ret, prot_pmp, tlb_size);
+
+                    prot &= prot_pmp;
+                }
             } else {
                 /*
                  * Guest physical address translation failed, this is a HS
