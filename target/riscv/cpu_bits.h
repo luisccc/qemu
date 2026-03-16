@@ -279,8 +279,9 @@
 #define CSR_HENVCFGH        0x61A
 
 /* Hypervisor SPMP */
-#define CSR_HSPMPSWITCH       0x616
-#define CSR_HSPMPSWITCHH      0x617
+#define CSR_HSPMPSWITCH     0x616
+#define CSR_HSPMPSWITCHH    0x617
+#define CSR_HSPMPDELEG      0x620
 
 /* Hypervisor state CSRs */
 #define CSR_HSTATEEN0       0x60C
@@ -302,6 +303,9 @@
 #define CSR_VSTVAL          0x243
 #define CSR_VSIP            0x244
 #define CSR_VSATP           0x280
+
+#define CSR_VSPMPSWITCH     0x281
+#define CSR_VSPMPSWITCHH    0x282
 
 /* Sstc virtual CSRs */
 #define CSR_VSTIMECMP       0x24D

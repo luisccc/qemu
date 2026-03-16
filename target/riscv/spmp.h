@@ -63,15 +63,16 @@ typedef struct {
     uint8_t     num_deleg_rules;
     uint64_t    spmpswitch;
     uint64_t    locked_rules;
+    signed char last_locked_rule;
 } spmp_table_t;
 
 void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
-    target_ulong val, bool m_mode_access);
+    target_ulong val, bool priv_access);
 target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index);
 
 target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index);
 void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
-    target_ulong val, bool m_mode_access);
+    target_ulong val, bool priv_access);
 
 void sspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
 void hspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
@@ -82,7 +83,19 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
 int spmp_priv_to_page_prot(spmp_priv_t spmp_priv);
 void spmp_unlock_entries(CPURISCVState *env);
 
-void spmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea);
-uint8_t spmp_get_a_field(uint8_t cfg);
+// VSPMP
+bool vspmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
+    target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,
+    target_ulong mode);
+
+void vspmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
+    target_ulong val, bool priv_access);
+target_ulong vspmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index);
+
+target_ulong vspmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index);
+void vspmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
+    target_ulong val, bool priv_access);
+void vspmpswitch_csr_write(CPURISCVState *env, uint64_t new_val);
+void vspmp_unlock_entries(CPURISCVState *env);
 
 #endif

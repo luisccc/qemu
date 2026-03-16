@@ -472,9 +472,7 @@ static void riscv_max_cpu_init(Object *obj)
 
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
-    
-    cpu->cfg.spmp = true;
-    cpu->cfg.ext_smpmpdeleg = true;
+
 
     env->priv_ver = PRIV_VERSION_LATEST;
 #ifndef CONFIG_USER_ONLY
@@ -492,8 +490,6 @@ static void rv64_base_cpu_init(Object *obj)
 
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
-    cpu->cfg.spmp = true;
-    cpu->cfg.ext_smpmpdeleg = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -743,8 +739,6 @@ static void rv32_base_cpu_init(Object *obj)
 
     cpu->cfg.mmu = true;
     cpu->cfg.pmp = true;
-    cpu->cfg.spmp = true;
-    cpu->cfg.ext_smpmpdeleg = true;
 
     /* Set latest version of privileged specification */
     env->priv_ver = PRIV_VERSION_LATEST;
@@ -1123,6 +1117,13 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
         env->spmp_state.num_deleg_rules = 64 - MPMP_DELEG_DEFAULT;
 
         spmp_unlock_entries(env);
+    }
+
+    if (riscv_cpu_cfg(env)->ext_ssvspmp) {
+        env->hspmpdeleg = MPMP_DELEG_DEFAULT - env->mpmpdeleg;
+        env->vspmp_state.num_deleg_rules = MPMP_DELEG_DEFAULT - (env->hspmpdeleg + env->mpmpdeleg);
+
+        vspmp_unlock_entries(env);
     }
 #else
     env->priv = PRV_U;
@@ -1964,8 +1965,10 @@ static void prop_spmp_set(Object *obj, Visitor *v, const char *name,
     }
 
     cpu_option_add_user_setting(name, value);
+
     cpu->cfg.spmp = value;
     cpu->cfg.ext_smpmpdeleg = value;
+    cpu->cfg.ext_sscsrind = value? true : cpu->cfg.ext_sscsrind;
 }
 
 static void prop_spmp_get(Object *obj, Visitor *v, const char *name,
@@ -2015,6 +2018,48 @@ static const PropertyInfo prop_ext_sspmpsw = {
     .set = prop_sspmpsw_set,
 };
 
+static void prop_sshspmp_set(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    bool value;
+
+    visit_type_bool(v, name, &value, errp);
+
+    if ((cpu->cfg.ext_sshspmp != value && riscv_cpu_is_vendor(obj))) {
+        cpu_set_prop_err(cpu, name, errp);
+        return;
+    }
+
+    // If enabled, enable depedencies
+    // Enable dependencies
+    if(value) {
+        cpu->cfg.spmp = true;
+        cpu->cfg.ext_smpmpdeleg = true;
+        cpu->cfg.ext_sscsrind = true;
+
+        cpu->cfg.ext_sshspmpdeleg = true;
+    }
+
+    cpu_option_add_user_setting(name, value);
+    cpu->cfg.ext_sshspmp = value;
+}
+
+static void prop_sshspmp_get(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    bool value = RISCV_CPU(obj)->cfg.ext_sshspmp;
+
+    visit_type_bool(v, name, &value, errp);
+}
+
+static const PropertyInfo prop_ext_sshspmp = {
+    .type = "bool",
+    .description = "ext_sshspmp",
+    .get = prop_sshspmp_get,
+    .set = prop_sshspmp_set,
+};
+
 static void prop_sshspmpsw_set(Object *obj, Visitor *v, const char *name,
                          void *opaque, Error **errp)
 {
@@ -2023,10 +2068,20 @@ static void prop_sshspmpsw_set(Object *obj, Visitor *v, const char *name,
 
     visit_type_bool(v, name, &value, errp);
 
-    if ((cpu->cfg.ext_sshspmpsw != value && riscv_cpu_is_vendor(obj)) ||
-        (!cpu->cfg.spmp && !cpu->cfg.ext_sspmpsw)) {
+    if (cpu->cfg.ext_sshspmpsw != value && riscv_cpu_is_vendor(obj))  {
         cpu_set_prop_err(cpu, name, errp);
         return;
+    }
+
+    // Enable dependencies
+    if(value) {
+        cpu->cfg.ext_sshspmp = true;
+        cpu->cfg.ext_sshspmpdeleg = true;
+        cpu->cfg.ext_sspmpsw = true;
+
+        cpu->cfg.spmp = true; // hspmp depends on spmp
+        cpu->cfg.ext_smpmpdeleg = true;
+        cpu->cfg.ext_sscsrind = true;
     }
 
     cpu_option_add_user_setting(name, value);
@@ -2046,6 +2101,48 @@ static const PropertyInfo prop_ext_sshspmpsw = {
     .description = "ext_sshspmpsw",
     .get = prop_sshspmpsw_get,
     .set = prop_sshspmpsw_set,
+};
+
+static void prop_ssvspmp_set(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    bool value;
+
+    visit_type_bool(v, name, &value, errp);
+
+    if ((cpu->cfg.ext_ssvspmp != value && riscv_cpu_is_vendor(obj))){
+        cpu_set_prop_err(cpu, name, errp);
+        return;
+    }
+
+    // Enable dependencies
+    if(value) {
+        cpu->cfg.spmp = true;
+        cpu->cfg.ext_smpmpdeleg = true;
+        cpu->cfg.ext_sscsrind = true;
+
+        cpu->cfg.ext_sshspmp = true;
+        cpu->cfg.ext_sshspmpdeleg = true;
+    }
+
+    cpu_option_add_user_setting(name, value);
+    cpu->cfg.ext_ssvspmp = value;
+}
+
+static void prop_ssvspmp_get(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    bool value = RISCV_CPU(obj)->cfg.ext_ssvspmp;
+
+    visit_type_bool(v, name, &value, errp);
+}
+
+static const PropertyInfo prop_ext_ssvspmp = {
+    .type = "bool",
+    .description = "ext_ssvspmp",
+    .get = prop_ssvspmp_get,
+    .set = prop_ssvspmp_set,
 };
 
 static int priv_spec_from_str(const char *priv_spec_str)
@@ -3049,8 +3146,11 @@ static const Property riscv_cpu_properties[] = {
     {.name = "pmp", .info = &prop_pmp},
     {.name = "spmp", .info = &prop_spmp},
     {.name = "sspmpsw", .info = &prop_ext_sspmpsw},
-    {.name = "sshspmpsw", .info = &prop_ext_sshspmpsw},
 
+    {.name = "sshspmp", .info = &prop_ext_sshspmp},
+    {.name = "sshspmpsw", .info = &prop_ext_sshspmpsw},
+    {.name = "ssvspmp", .info = &prop_ext_ssvspmp},
+    
     {.name = "priv_spec", .info = &prop_priv_spec},
     {.name = "vext_spec", .info = &prop_vext_spec},
 

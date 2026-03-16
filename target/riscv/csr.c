@@ -761,6 +761,28 @@ static RISCVException spmp(CPURISCVState *env, int csrno)
     return smode(env, csrno);
 }
 
+static RISCVException hspmp(CPURISCVState *env, int csrno)
+{
+    if (!riscv_cpu_cfg(env)->spmp || !riscv_cpu_cfg(env)->ext_sshspmp)
+    {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    // HSPMP can only exist if hypervisor exists
+    return hmode(env, csrno);
+}
+
+static RISCVException vspmp(CPURISCVState *env, int csrno)
+{
+    if (!riscv_cpu_cfg(env)->ext_ssvspmp)
+    {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    // VSPMP can only exist, if hypervisor exists
+    return hspmp(env, csrno);
+}
+
 static RISCVException sspmpsw(CPURISCVState *env, int csrno)
 {
     if (!riscv_cpu_cfg(env)->ext_sspmpsw) {
@@ -2814,6 +2836,11 @@ static int rmw_xireg_ctr(CPURISCVState *env, int csrno,
 static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask);
+
+static int rmw_xireg_vspmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask);
+
 /*
  * rmw_xireg_csrind: Perform indirect access to xireg and xireg2-xireg6
  *
@@ -2825,7 +2852,7 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
                               target_ulong isel, target_ulong *val,
                               target_ulong new_val, target_ulong wr_mask)
 {
-    bool virt = csrno == CSR_VSIREG ? true : false;
+    bool virt_access = (csrno == CSR_VSIREG) || (csrno == CSR_VSIREG2) ? true : false;
     int ret = -EINVAL;
 
     if (xiselect_cd_range(isel)) {
@@ -2840,7 +2867,16 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
             return ret;
         }
 
-        ret = rmw_xireg_spmp(env, csrno, isel, val, new_val, wr_mask);
+        // Virtual accesses are to VSPMP
+        if(vspmp(env, csrno) == RISCV_EXCP_NONE &&
+            (env->virt_enabled || virt_access)){
+            
+            ret = rmw_xireg_vspmp(env, csrno, isel, val, new_val, wr_mask);
+        } else {
+            // If we are not virt_access, or csrno is not VSIREG, access SPMP
+            ret = rmw_xireg_spmp(env, csrno, isel, val, new_val, wr_mask);
+        }
+    
     } else {
         /*
          * As per the specification, access to unimplented region is undefined
@@ -2850,7 +2886,7 @@ static int rmw_xireg_csrind(CPURISCVState *env, int csrno,
     }
 
     if (ret) {
-        return (env->virt_enabled && virt) ?
+        return (env->virt_enabled && virt_access) ?
                RISCV_EXCP_VIRT_INSTRUCTION_FAULT : RISCV_EXCP_ILLEGAL_INST;
     }
 
@@ -5306,7 +5342,7 @@ static RISCVException rmw_mpmpdeleg(CPURISCVState *env, int csrno,
                                     target_ulong new_val, target_ulong wr_mask)
 {
     uint16_t new_mpmpdeleg = (env->mpmpdeleg & ~wr_mask) | (new_val & wr_mask);
-    qemu_log_mask(CPU_LOG_SPMP, "New: %d, val: "HWADDR_FMT_plx" \n", new_mpmpdeleg, new_val);
+    qemu_log_mask(CPU_LOG_SPMP, "New mpmpdeleg: %d\n", new_mpmpdeleg);
 
     if (ret_val) {
         *ret_val = env->mpmpdeleg;
@@ -5319,6 +5355,38 @@ static RISCVException rmw_mpmpdeleg(CPURISCVState *env, int csrno,
     }
 
     env->spmp_state.num_deleg_rules = MPMP_DELEG_DEFAULT - env->mpmpdeleg;
+
+    // Sanity between delegs
+    if(env->mpmpdeleg + env->hspmpdeleg > MPMP_DELEG_DEFAULT){
+        env->hspmpdeleg = MPMP_DELEG_DEFAULT - env->mpmpdeleg;
+        env->vspmp_state.num_deleg_rules = MPMP_DELEG_DEFAULT - env->hspmpdeleg;
+    }
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_hspmpdeleg(CPURISCVState *env, int csrno,
+                                    target_ulong *ret_val,
+                                    target_ulong new_val, target_ulong wr_mask)
+{
+    uint16_t new_hspmpdeleg = (env->hspmpdeleg & ~wr_mask) | (new_val & wr_mask);
+    qemu_log_mask(CPU_LOG_SPMP, "New hspmpdeleg: %d\n", new_hspmpdeleg);
+
+    if (ret_val) {
+        *ret_val = env->hspmpdeleg;
+    }
+
+    // not valid if new_hspmpdeleg is higher than last locked spmp rule
+    if ((new_hspmpdeleg & 0x7F) > env->spmp_state.last_locked_rule) {
+        env->hspmpdeleg = new_hspmpdeleg & 0x7F;
+    }
+
+    // Sanity between delegs
+    if(env->mpmpdeleg + env->hspmpdeleg > MPMP_DELEG_DEFAULT){
+        env->hspmpdeleg = MPMP_DELEG_DEFAULT - env->mpmpdeleg;
+    }
+
+    env->vspmp_state.num_deleg_rules = MPMP_DELEG_DEFAULT - (env->hspmpdeleg + env->mpmpdeleg);
     return RISCV_EXCP_NONE;
 }
 
@@ -5436,6 +5504,62 @@ static RISCVException rmw_hspmpswitchh(CPURISCVState *env, int csrno,
     return ret;
 }
 
+static RISCVException rmw_vspmpswitch64(CPURISCVState *env, int csrno,
+                                    uint64_t *ret_val,
+                                    uint64_t new_val, uint64_t wr_mask)
+{
+    uint64_t new_vspmpswitch = (env->vspmp_state.spmpswitch & ~wr_mask) | (new_val & wr_mask);
+    
+    if (env->vspmp_state.num_deleg_rules == 0){
+        qemu_log_mask(CPU_LOG_SPMP,
+                    "vSPMP is enabled but no rules are delegated\n");
+        
+        if (ret_val)
+            *ret_val = 0;
+        
+        return RISCV_EXCP_NONE;
+    }
+    
+    if (ret_val) {
+        *ret_val = env->vspmp_state.spmpswitch;
+    }
+    
+    vspmpswitch_csr_write(env, new_vspmpswitch);
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException rmw_vspmpswitch(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+    ret = rmw_vspmpswitch64(env, csrno, &rval, new_val, wr_mask);
+    if (ret_val) {
+        *ret_val = rval;
+    }
+
+    return ret;
+}
+
+static RISCVException rmw_vspmpswitchh(CPURISCVState *env, int csrno,
+                                   target_ulong *ret_val,
+                                   target_ulong new_val,
+                                   target_ulong wr_mask)
+{
+    uint64_t rval = 0;
+    RISCVException ret;
+
+    ret = rmw_vspmpswitch64(env, csrno, &rval,
+        ((uint64_t)new_val) << 32, ((uint64_t)wr_mask) << 32);
+    if (ret_val) {
+        *ret_val = rval >> 32;
+    }
+
+    return ret;
+}
+
 static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
                         target_ulong isel, target_ulong *val,
                         target_ulong new_val, target_ulong wr_mask)
@@ -5479,6 +5603,50 @@ static int rmw_xireg_spmp(CPURISCVState *env, int csrno,
             }
 
             spmpcfg_csr_write(env, index, new_val & wr_mask, m_mode_access);
+            break;
+        default: 
+            return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return 0;
+}
+
+static int rmw_xireg_vspmp(CPURISCVState *env, int csrno,
+                        target_ulong isel, target_ulong *val,
+                        target_ulong new_val, target_ulong wr_mask)
+{
+    int index = 0;
+    bool s_mode_access = false;
+
+    index = isel - ISELECT_SPMP_BASE;
+
+    /* As specified, accesses to VSIREG are done through the HS and M modes.
+       Accesses to SIREG are done through the VS.
+    */
+    switch (csrno) {
+        case CSR_VSIREG:
+            // If HS mode, signal it
+            s_mode_access = true;
+            [[fallthrough]];
+        case CSR_SIREG:
+            if(val) {
+                *val = vspmpaddr_csr_read(env, index);
+            }
+            vspmpaddr_csr_write(env, index, new_val & wr_mask, s_mode_access);
+            break;
+        
+        case CSR_VSIREG2:
+            // If HS mode, signal it
+            s_mode_access = true;
+            [[fallthrough]];
+        case CSR_SIREG2:
+            index = isel - ISELECT_SPMP_BASE;
+
+            if(val) {
+                *val = vspmpcfg_csr_read(env, index);
+            }
+
+            vspmpcfg_csr_write(env, index, new_val & wr_mask, s_mode_access);
             break;
         default: 
             return RISCV_EXCP_ILLEGAL_INST;
@@ -6346,8 +6514,12 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
     [CSR_HSPMPSWITCH] = { "hspmpswitch", hspmpsw, NULL, NULL, rmw_hspmpswitch },
     [CSR_HSPMPSWITCHH] = { "hspmpswitchh", hspmpsw, NULL, NULL, rmw_hspmpswitchh },
-    
 
+    [CSR_VSPMPSWITCH] = { "vspmpswitch", hspmpsw, NULL, NULL, rmw_vspmpswitch },
+    [CSR_VSPMPSWITCHH] = { "vspmpswitchh", hspmpsw, NULL, NULL, rmw_vspmpswitchh },
+    
+    [CSR_HSPMPDELEG]   = { "hspmpdeleg", hspmp, NULL, NULL, rmw_hspmpdeleg },
+    
     /* Debug CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },
     [CSR_TDATA1]    =  { "tdata1",   debug, read_tdata,    write_tdata    },

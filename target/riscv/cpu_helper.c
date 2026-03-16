@@ -1223,24 +1223,41 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot, hwaddr addr,
  * @access_type: The type of access
  * @mode: Indicates current privilege level.
  */
-static int get_physical_address_spmp(CPURISCVState *env, int *prot, hwaddr addr,
+static int get_spmp_perm(CPURISCVState *env, int *prot, hwaddr addr,
                                     int size, int access_type,
                                     int mode)
 {
-    spmp_priv_t spmp_priv;
+    spmp_priv_t spmp_priv = SPMP_READ | SPMP_WRITE | SPMP_EXEC, vspmp_priv = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
 
-    if (!riscv_cpu_cfg(env)->spmp) {
-        *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
-        return TRANSLATE_SUCCESS;
+    int satp, hgatp, vsatp;
+    if (riscv_cpu_mxl(env) == MXL_RV32) {
+        satp = get_field(env->satp, SATP32_MODE);
+        hgatp = get_field(env->hgatp, SATP32_MODE);
+        vsatp = get_field(env->vsatp, SATP32_MODE);
+    } else {
+        satp = get_field(env->satp, SATP64_MODE);
+        hgatp = get_field(env->hgatp, SATP64_MODE);
+        vsatp = get_field(env->vsatp, SATP32_MODE);
     }
 
-    if (!spmp_hart_has_privs(env, addr, size, 1 << access_type, &spmp_priv,
-                            mode)) {
-        *prot = 0;
-        return TRANSLATE_SPMP_FAIL;
+    If extension and virtual and vsatp bare
+    if (riscv_cpu_cfg(env)->ext_ssvspmp && env->virt_enabled && vsatp == VM_1_10_MBARE) {
+        if (!vspmp_hart_has_privs(env, addr, size, 1 << access_type, &vspmp_priv, mode)) {
+            *prot = 0;
+            return TRANSLATE_VSPMP_FAIL;
+        }
     }
 
-    *prot = spmp_priv_to_page_prot(spmp_priv);
+    if ((env->virt_enabled && hgatp == VM_1_10_MBARE) ||
+        (!env->virt_enabled && satp == VM_1_10_MBARE)) 
+    {
+        if (!spmp_hart_has_privs(env, addr, size, 1 << access_type, &spmp_priv, mode)) {
+            *prot = 0;
+            return TRANSLATE_SPMP_FAIL;
+        }
+    }
+    
+    *prot = spmp_priv_to_page_prot(spmp_priv & vspmp_priv);
 
     return TRANSLATE_SUCCESS;
 }
@@ -1756,14 +1773,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
             cs->exception_index = RISCV_EXCP_INST_ACCESS_FAULT;
         } else if (env->virt_enabled && (!first_stage || spmp_violation)) {
             cs->exception_index = RISCV_EXCP_INST_GUEST_PAGE_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_INST_GUEST_PAGE_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_INST_PAGE_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_INST_PAGE_FAULT);
         }
         break;
     case MMU_DATA_LOAD:
@@ -1772,14 +1783,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
         } else if ((two_stage && !first_stage) || 
                     (env->virt_enabled && spmp_violation)) {
             cs->exception_index = RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_LOAD_GUEST_ACCESS_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_LOAD_PAGE_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_LOAD_PAGE_FAULT);
         }
         break;
     case MMU_DATA_STORE:
@@ -1788,14 +1793,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
         } else if ((two_stage && !first_stage) || 
                     (env->virt_enabled && spmp_violation)) {
             cs->exception_index = RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_STORE_GUEST_AMO_ACCESS_FAULT);
         } else {
             cs->exception_index = RISCV_EXCP_STORE_PAGE_FAULT;
-
-            qemu_log_mask(CPU_LOG_SPMP,
-                            "Raising %d\n", RISCV_EXCP_STORE_PAGE_FAULT);
         }
         break;
     default:
@@ -1970,16 +1969,41 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             prot &= prot2;
 
             if (ret == TRANSLATE_SUCCESS) {
-                ret = get_physical_address_pmp(env, &prot_pmp, pa,
-                                               size, access_type, mode);
-                tlb_size = pmp_get_tlb_size(env, pa);
+                /*
+                *  Is SPMP enabled? 
+                */
+                
+                if (riscv_cpu_cfg(env)->spmp) {
+                    /* S-mode Physical Memory Protection check */
+                    ret = get_spmp_perm(env, &prot_spmp, pa,
+                                                    size, access_type, mode);
 
-                qemu_log_mask(CPU_LOG_MMU,
-                              "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
-                              " %d tlb_size %" HWADDR_PRIu "\n",
-                              __func__, pa, ret, prot_pmp, tlb_size);
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s SPMP address=" HWADDR_FMT_plx " ret %d prot %d\n",
+                                __func__, pa, ret, prot_spmp);
 
-                prot &= prot_pmp;
+                    prot &= prot_spmp;
+
+                    if (ret == TRANSLATE_SPMP_FAIL || ret == TRANSLATE_VSPMP_FAIL) {
+                        qemu_log_mask(CPU_LOG_SPMP,
+                                "SPMP Check failed with SPMP address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", pa, access_type, mode);
+                        spmp_violation = true;
+                    }
+                }
+
+                /* Only apply checks when the SPMP passed */
+                if (ret != TRANSLATE_SPMP_FAIL || ret != TRANSLATE_VSPMP_FAIL) {
+                    ret = get_physical_address_pmp(env, &prot_pmp, pa,
+                                                size, access_type, mode);
+                    tlb_size = pmp_get_tlb_size(env, pa);
+
+                    qemu_log_mask(CPU_LOG_MMU,
+                                "%s PMP address=" HWADDR_FMT_plx " ret %d prot"
+                                " %d tlb_size %" HWADDR_PRIu "\n",
+                                __func__, pa, ret, prot_pmp, tlb_size);
+
+                    prot &= prot_pmp;
+                }
             } else {
                 /*
                  * Guest physical address translation failed, this is a HS
@@ -2005,30 +2029,13 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       __func__, address, ret, pa, prot);
 
         if (ret == TRANSLATE_SUCCESS) {
-            /*
-             * The SPMP and the paging mechanism will not
-             * take effect simultaneously.
-             * Check both SPMP and PMP if the core is running in bare mode
-             * or the HW does not implement an MMU.
-             * Check PMP only if paging is enabled.
-             * 
-             * When V = 1 and hgatp.MODE = Bare - SPMP Hypervisor Extension
-             * 
-             */
-            int satp, hgatp;
-            if (riscv_cpu_mxl(env) == MXL_RV32) {
-                satp = get_field(env->satp, SATP32_MODE);
-                hgatp = get_field(env->hgatp, SATP32_MODE);
-            } else {
-                satp = get_field(env->satp, SATP64_MODE);
-                hgatp = get_field(env->hgatp, SATP64_MODE);
-            }
-
-            if (((env->virt_enabled && hgatp == VM_1_10_MBARE) ||
-                (!env->virt_enabled && satp == VM_1_10_MBARE)) && 
-                riscv_cpu_cfg(env)->spmp) {
+            /*             
+            *  Is SPMP enabled? 
+            */
+            
+            if (riscv_cpu_cfg(env)->spmp) {
                 /* S-mode Physical Memory Protection check */
-                ret = get_physical_address_spmp(env, &prot_spmp, pa,
+                ret = get_spmp_perm(env, &prot_spmp, pa,
                                                 size, access_type, mode);
 
                 qemu_log_mask(CPU_LOG_MMU,
@@ -2037,7 +2044,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 
                 prot &= prot_spmp;
 
-                if (ret == TRANSLATE_SPMP_FAIL) {
+                if (ret == TRANSLATE_SPMP_FAIL || ret == TRANSLATE_VSPMP_FAIL) {
                     qemu_log_mask(CPU_LOG_SPMP,
                             "SPMP Check failed with SPMP address=" HWADDR_FMT_plx " access_type=%d and mode %d \n", pa, access_type, mode);
                     spmp_violation = true;
@@ -2045,7 +2052,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             }
 
             /* Only apply checks when the SPMP passed */
-			if (ret != TRANSLATE_SPMP_FAIL) {
+			if (ret != TRANSLATE_SPMP_FAIL || ret != TRANSLATE_VSPMP_FAIL) {
                 ret = get_physical_address_pmp(env, &prot_pmp, pa,
                                             size, access_type, mode);
                 tlb_size = pmp_get_tlb_size(env, pa);

@@ -119,6 +119,7 @@ enum {
     TRANSLATE_FAIL,
     TRANSLATE_PMP_FAIL,
     TRANSLATE_SPMP_FAIL,
+    TRANSLATE_VSPMP_FAIL,
     TRANSLATE_G_STAGE_FAIL
 };
 
@@ -443,7 +444,10 @@ struct CPUArchState {
     spmp_table_t spmp_state;
 
     /* Hypervisor */
+    uint16_t     hspmpdeleg;
     uint64_t     hspmpswitch;
+
+    spmp_table_t vspmp_state;
 
     /* trigger module */
     target_ulong trigger_cur;
