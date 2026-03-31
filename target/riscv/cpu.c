@@ -1969,6 +1969,7 @@ static void prop_spmp_set(Object *obj, Visitor *v, const char *name,
     cpu->cfg.spmp = value;
     cpu->cfg.ext_smpmpdeleg = value;
     cpu->cfg.ext_sscsrind = value? true : cpu->cfg.ext_sscsrind;
+    cpu->cfg.ext_smcsrind = value? true : cpu->cfg.ext_smcsrind;
 }
 
 static void prop_spmp_get(Object *obj, Visitor *v, const char *name,
@@ -2037,6 +2038,7 @@ static void prop_sshspmp_set(Object *obj, Visitor *v, const char *name,
         cpu->cfg.spmp = true;
         cpu->cfg.ext_smpmpdeleg = true;
         cpu->cfg.ext_sscsrind = true;
+        cpu->cfg.ext_smcsrind = true;
 
         cpu->cfg.ext_sshspmpdeleg = true;
     }
@@ -2082,6 +2084,7 @@ static void prop_sshspmpsw_set(Object *obj, Visitor *v, const char *name,
         cpu->cfg.spmp = true; // hspmp depends on spmp
         cpu->cfg.ext_smpmpdeleg = true;
         cpu->cfg.ext_sscsrind = true;
+        cpu->cfg.ext_smcsrind = true;
     }
 
     cpu_option_add_user_setting(name, value);
@@ -2121,6 +2124,7 @@ static void prop_ssvspmp_set(Object *obj, Visitor *v, const char *name,
         cpu->cfg.spmp = true;
         cpu->cfg.ext_smpmpdeleg = true;
         cpu->cfg.ext_sscsrind = true;
+        cpu->cfg.ext_smcsrind = true;
 
         cpu->cfg.ext_sshspmp = true;
         cpu->cfg.ext_sshspmpdeleg = true;

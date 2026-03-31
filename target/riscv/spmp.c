@@ -105,7 +105,7 @@ static void spmp_update_rule_addr(spmp_table_t *instance, uint32_t spmp_index)
     instance->addr[spmp_index].sa = sa;
     instance->addr[spmp_index].ea = ea;
     qemu_log_mask(CPU_LOG_SPMP,
-                      "%s: Entry %d - start_addr: " HWADDR_FMT_plx ", end_addr: " HWADDR_FMT_plx "\n", __func__, spmp_index, sa, ea);
+                      "%s: Entry %d - start_addr: " TARGET_FMT_lx ", end_addr: " TARGET_FMT_lx "\n", __func__, spmp_index, sa, ea);
 }
 
 static void spmp_update_rule_nums(spmp_table_t *instance)
@@ -357,7 +357,7 @@ static void spmpcfg_csr_write_common(spmp_table_t *instance, uint32_t reg_index,
 
         spmp_update_rule(instance, reg_index);
         qemu_log_mask(CPU_LOG_SPMP,
-                      "%s: new config: " HWADDR_FMT_plx " in entry: %d\n", __func__, val, reg_index);
+                      "%s: new config: " TARGET_FMT_lx " in entry: %d\n", __func__, val, reg_index);
     } else {
         if (locked){
             qemu_log_mask(LOG_GUEST_ERROR,

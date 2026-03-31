@@ -1240,7 +1240,7 @@ static int get_spmp_perm(CPURISCVState *env, int *prot, hwaddr addr,
         vsatp = get_field(env->vsatp, SATP32_MODE);
     }
 
-    If extension and virtual and vsatp bare
+    // If extension and virtual and vsatp bare
     if (riscv_cpu_cfg(env)->ext_ssvspmp && env->virt_enabled && vsatp == VM_1_10_MBARE) {
         if (!vspmp_hart_has_privs(env, addr, size, 1 << access_type, &vspmp_priv, mode)) {
             *prot = 0;
